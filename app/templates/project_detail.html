@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} - 项目详情{% endblock %}
+
+{% block content %}
+<div class="project-detail">
+    <div class="page-header">
+        <h2>{{ project.name }}</h2>
+        <div>
+            <a href="{{ url_for('project.index') }}" class="btn btn-secondary">返回列表</a>
+        </div>
+    </div>
+    
+    <div class="info-card">
+        <h3>基本信息</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <label>项目ID:</label>
+                <span>{{ project.id }}</span>
+            </div>
+            <div class="info-item">
+                <label>项目名称:</label>
+                <span>{{ project.name }}</span>
+            </div>
+            <div class="info-item">
+                <label>项目描述:</label>
+                <span>{{ project.description or '-' }}</span>
+            </div>
+            <div class="info-item">
+                <label>状态:</label>
+                <span class="badge badge-{{ project.status }}">
+                    {% if project.status == 'pending' %}待处理
+                    {% elif project.status == 'processing' %}处理中
+                    {% elif project.status == 'completed' %}已完成
+                    {% elif project.status == 'failed' %}失败
+                    {% elif project.status == 'cancelled' %}已取消
+                    {% else %}{{ project.status }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="info-item">
+                <label>输出路径:</label>
+                <span>{{ project.output_path }}</span>
+            </div>
+            <div class="info-item">
+                <label>创建时间:</label>
+                <span>{{ project.created_at }}</span>
+            </div>
+            <div class="info-item">
+                <label>更新时间:</label>
+                <span>{{ project.updated_at }}</span>
+            </div>
+        </div>
+    </div>
+    
+    {% if stats %}
+    <div class="info-card">
+        <h3>统计信息</h3>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.total_segments }}</div>
+                <div class="stat-label">总段落数</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.completed_segments }}</div>
+                <div class="stat-label">已完成段落</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.pending_segments }}</div>
+                <div class="stat-label">待处理段落</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.total_words }}</div>
+                <div class="stat-label">总字数</div>
+            </div>
+        </div>
+        
+        {% if stats.total_segments > 0 %}
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: {{ (stats.completed_segments / stats.total_segments * 100) | int }}%"></div>
+        </div>
+        <p class="progress-text">完成进度: {{ (stats.completed_segments / stats.total_segments * 100) | int }}%</p>
+        {% endif %}
+    </div>
+    
+    <div class="info-card">
+        <h3>任务历史</h3>
+        {% if stats.tasks %}
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>任务ID</th>
+                        <th>任务类型</th>
+                        <th>状态</th>
+                        <th>进度</th>
+                        <th>创建时间</th>
+                        <th>完成时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in stats.tasks %}
+                    <tr>
+                        <td>{{ task.id }}</td>
+                        <td>
+                            {% if task.task_type == 'text_import' %}文本导入
+                            {% elif task.task_type == 'audio_synthesis' %}语音合成
+                            {% elif task.task_type == 'video_generation' %}视频生成
+                            {% elif task.task_type == 'video_merge' %}视频合并
+                            {% else %}{{ task.task_type }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ task.status }}">
+                                {% if task.status == 'pending' %}待处理
+                                {% elif task.status == 'running' %}运行中
+                                {% elif task.status == 'completed' %}已完成
+                                {% elif task.status == 'failed' %}失败
+                                {% elif task.status == 'cancelled' %}已取消
+                                {% else %}{{ task.status }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>{{ task.progress | int }}%</td>
+                        <td>{{ task.created_at }}</td>
+                        <td>{{ task.completed_at or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p>暂无任务记录</p>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <div class="info-card">
+        <h3>配置信息</h3>
+        <div class="config-grid">
+            {% for key, value in project.config.items() %}
+            <div class="config-item">
+                <label>{{ key }}:</label>
+                <span>{{ value }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 自动刷新页面以更新进度(仅在处理中时)
+{% if project.status == 'processing' %}
+setTimeout(function() {
+    location.reload();
+}, 5000); // 每5秒刷新一次
+{% endif %}
+</script>
+{% endblock %}
