@@ -66,6 +66,7 @@ python run.py
 
 打开浏览器访问: http://127.0.0.1:5000
 
+
 ### 首次使用
 
 1. 在首页点击"创建项目"
@@ -141,6 +142,7 @@ novel-to-video/
 ├── requirements.txt           # 依赖清单
 ├── run.py                     # 应用入口
 └── README.md                  # 项目说明
+
 ```
 
 ## 使用流程
@@ -219,6 +221,13 @@ app.run(host='0.0.0.0', port=5001)  # 改为其他端口
 
 **Q: 语音合成失败?**
 A: 检查网络连接,Edge TTS 需要访问微软服务器
+
+### 已知问题
+
+- 任务调度触发语音合成时报 `Working outside of application context`。
+  - 原因: 后台任务访问数据库时缺少 Flask 应用上下文。
+  - 处理建议: 在 `TaskScheduler` 执行任务前注入应用上下文,或在服务层通过 `current_app.app_context()` 包裹相关数据库调用。
+  - 伴随错误: `UnboundLocalError: local variable 'task_id' referenced before assignment` 需要在异常路径初始化 `task_id` 或调整逻辑。
 
 **Q: 视频生成失败?**
 A: 检查磁盘空间是否充足,确保 ffmpeg 已正确安装
