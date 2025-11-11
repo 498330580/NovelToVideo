@@ -27,14 +27,20 @@ class VideoService:
         Returns:
             (成功标志, 错误信息)
         """
+        task_id = None
         try:
             # 创建任务
             task_id = Task.create(project_id, Task.TYPE_VIDEO_GENERATION)
             Task.update_status(task_id, Task.STATUS_RUNNING)
             
-            # 获取项目信息
+            # 获取项目信息（容错：项目/配置可能为 None）
             project = Project.get_by_id(project_id)
-            config = project.config
+            if not project:
+                error_msg = '项目不存在，无法生成视频'
+                Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                Project.update_status(project_id, Project.STATUS_FAILED)
+                return False, error_msg
+            config = project.config if isinstance(project.config, dict) else {}
             
             # 获取已完成的音频段落
             segments = TextSegment.get_completed_segments(project_id)
@@ -52,8 +58,11 @@ class VideoService:
             FileHandler.ensure_dir(temp_video_dir)
             
             # 生成背景图片
+            # 安全的项目名称
+            safe_project_name = project.name or f'项目_{project_id}'
+
             background_image = VideoService._generate_background_image(
-                project.name,
+                safe_project_name,
                 config,
                 temp_image_dir
             )
@@ -78,13 +87,20 @@ class VideoService:
                     raise
             
             # 合并视频并按时长分片
+            # 安全的输出路径（如为空，使用默认输出目录下的项目子目录）
+            safe_output_path = project.output_path or os.path.join(
+                DefaultConfig.OUTPUT_DIR,
+                FileHandler.safe_filename(safe_project_name)
+            )
+            FileHandler.ensure_dir(safe_output_path)
+
             VideoService._merge_and_split_videos(
                 project_id,
                 video_clips,
                 config,
                 temp_video_dir,
-                project.output_path,
-                project.name,
+                safe_output_path,
+                safe_project_name,
                 task_id
             )
             
@@ -118,17 +134,30 @@ class VideoService:
         Returns:
             背景图片路径
         """
+        # 解析分辨率，兼容字符串和元组/列表
         resolution = config.get('resolution', DefaultConfig.DEFAULT_RESOLUTION)
-        width, height = resolution
+        if isinstance(resolution, str) and 'x' in resolution:
+            try:
+                w, h = resolution.lower().split('x')
+                width, height = int(w), int(h)
+            except Exception:
+                width, height = DefaultConfig.DEFAULT_RESOLUTION
+        elif isinstance(resolution, (list, tuple)) and len(resolution) == 2:
+            width, height = int(resolution[0]), int(resolution[1])
+        else:
+            width, height = DefaultConfig.DEFAULT_RESOLUTION
         
-        # 创建黑色背景
-        image = Image.new('RGB', (width, height), color=(0, 0, 0))
+        # 创建背景图片（不直接传入 color，避免类型检查冲突）
+        image = Image.new('RGB', (width, height))
         draw = ImageDraw.Draw(image)
+        # 填充为纯黑背景
+        draw.rectangle([(0, 0), (width, height)], fill=(0, 0, 0))
         
         # 使用默认字体
+        # 预先定义字体大小，避免未绑定变量的类型告警
+        font_size = max(12, int(height * 0.08))  # 字体大小为高度的8%
         try:
             # 尝试使用系统中文字体
-            font_size = int(height * 0.08)  # 字体大小为高度的8%
             font = ImageFont.truetype("msyh.ttc", font_size)  # 微软雅黑
         except:
             try:
@@ -168,6 +197,10 @@ class VideoService:
         Returns:
             视频片段对象
         """
+        # 防御性检查：音频文件必须存在且非空
+        if not audio_path or not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+            raise FileNotFoundError('音频文件不存在或为空，无法创建视频片段')
+
         fps = config.get('fps', DefaultConfig.DEFAULT_FPS)
         
         # 加载音频

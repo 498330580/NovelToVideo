@@ -74,9 +74,9 @@ def create_app(config=None):
     def internal_error(error):
         return render_template('base.html'), 500
     
-    # 启动任务调度器
+    # 启动任务调度器（传入应用实例，便于线程内使用应用上下文）
     with app.app_context():
-        TaskScheduler.start()
+        TaskScheduler.start(app)
     
     return app
 

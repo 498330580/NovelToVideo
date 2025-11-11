@@ -2,6 +2,8 @@
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 from app.services.project_service import ProjectService
 from app.services.task_scheduler import TaskScheduler
+from app.models.project import Project
+from app.models.text_segment import TextSegment
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -28,24 +30,59 @@ def create():
         return render_template('project_create.html')
     
     try:
-        # 获取表单数据
-        name = request.form.get('name', '').strip()
-        description = request.form.get('description', '').strip()
-        text_content = request.form.get('text_content', '').strip()
+        # 支持 JSON 和表单两种提交方式
+        # 优先解析 JSON，若非 JSON 则回退到表单
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            name = str(data.get('name', '')).strip()
+            description = str(data.get('description', '')).strip()
+            text_content = str(data.get('text_content', '')).strip()
+            # 解析配置（兼容字符串/列表/数值）
+            resolution_val = data.get('resolution', '1920,1080')
+            if isinstance(resolution_val, (list, tuple)) and len(resolution_val) == 2:
+                resolution = (int(resolution_val[0]), int(resolution_val[1]))
+            else:
+                resolution = tuple(map(int, str(resolution_val).split(',')))
+            fps = int(data.get('fps', 30))
+            bitrate = str(data.get('bitrate', '2000k'))
+            fmt = str(data.get('format', 'mp4'))
+            segment_duration = int(data.get('segment_duration', 600))
+            segment_mode = str(data.get('segment_mode', 'word_count'))
+            max_words = int(data.get('max_words', 10000))
+            voice = str(data.get('voice', 'zh-CN-XiaoxiaoNeural'))
+            rate = str(data.get('rate', '+0%'))
+            pitch = str(data.get('pitch', '+0Hz'))
+            volume = str(data.get('volume', '+0%'))
+        else:
+            # 获取表单数据
+            name = request.form.get('name', '').strip()
+            description = request.form.get('description', '').strip()
+            text_content = request.form.get('text_content', '').strip()
+            resolution = tuple(map(int, request.form.get('resolution', '1920,1080').split(',')))
+            fps = int(request.form.get('fps', 30))
+            bitrate = request.form.get('bitrate', '2000k')
+            fmt = request.form.get('format', 'mp4')
+            segment_duration = int(request.form.get('segment_duration', 600))
+            segment_mode = request.form.get('segment_mode', 'word_count')
+            max_words = int(request.form.get('max_words', 10000))
+            voice = request.form.get('voice', 'zh-CN-XiaoxiaoNeural')
+            rate = request.form.get('rate', '+0%')
+            pitch = request.form.get('pitch', '+0Hz')
+            volume = request.form.get('volume', '+0%')
         
         # 获取配置参数
         config = {
-            'voice': request.form.get('voice', 'zh-CN-XiaoxiaoNeural'),
-            'rate': request.form.get('rate', '+0%'),
-            'pitch': request.form.get('pitch', '+0Hz'),
-            'volume': request.form.get('volume', '+0%'),
-            'resolution': tuple(map(int, request.form.get('resolution', '1920,1080').split(','))),
-            'fps': int(request.form.get('fps', 30)),
-            'bitrate': request.form.get('bitrate', '2000k'),
-            'format': request.form.get('format', 'mp4'),
-            'segment_duration': int(request.form.get('segment_duration', 600)),
-            'segment_mode': request.form.get('segment_mode', 'word_count'),
-            'max_words': int(request.form.get('max_words', 10000))
+            'voice': voice,
+            'rate': rate,
+            'pitch': pitch,
+            'volume': volume,
+            'resolution': resolution,
+            'fps': fps,
+            'bitrate': bitrate,
+            'format': fmt,
+            'segment_duration': segment_duration,
+            'segment_mode': segment_mode,
+            'max_words': max_words
         }
         
         # 验证必填字段
@@ -124,3 +161,91 @@ def stats(project_id):
     except Exception as e:
         logger.error(f'获取项目统计失败: {str(e)}', exc_info=True)
         return jsonify({'success': False, 'error': f'获取统计信息失败: {str(e)}'}), 500
+
+
+@project_bp.route('/<int:project_id>/retry/tts', methods=['POST'])
+def retry_tts(project_id):
+    """重试语音合成任务
+    
+    - 将项目内失败的段落重置为待处理
+    - 提交新的语音合成任务到调度器
+    """
+    try:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+        # 重置失败段落为待处理
+        TextSegment.reset_audio_status_by_project(
+            project_id,
+            TextSegment.AUDIO_STATUS_FAILED,
+            TextSegment.AUDIO_STATUS_PENDING
+        )
+
+        # 提交语音合成任务
+        TaskScheduler.submit_tts_task(project_id)
+
+        return jsonify({'success': True, 'message': '已提交重试语音合成任务'})
+    except Exception as e:
+        logger.error(f'重试语音合成失败: {str(e)}', exc_info=True)
+        return jsonify({'success': False, 'error': f'重试失败: {str(e)}'}), 500
+
+
+@project_bp.route('/<int:project_id>/generate/video', methods=['POST'])
+def generate_video(project_id):
+    """提交视频生成任务"""
+    try:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+        TaskScheduler.submit_video_task(project_id)
+        return jsonify({'success': True, 'message': '已提交视频生成任务'})
+    except Exception as e:
+        logger.error(f'提交视频生成任务失败: {str(e)}', exc_info=True)
+        return jsonify({'success': False, 'error': f'提交失败: {str(e)}'}), 500
+
+
+@project_bp.route('/<int:project_id>/resegment', methods=['POST'])
+def resegment(project_id):
+    """重新分段文本并重置项目为待处理
+    
+    - 读取现有段落重构原始文本
+    - 根据传入配置重新分段并写入数据库
+    - 项目重置为待处理，可继续进行语音合成
+    """
+    try:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+        # 解析参数（JSON或表单），覆盖项目默认配置
+        def _to_int(val, default):
+            """安全转换为 int，None 或非法字符串时返回默认值"""
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                try:
+                    return int(default)
+                except Exception:
+                    return 0
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            segment_mode = str(data.get('segment_mode', project.config.get('segment_mode', 'word_count') if isinstance(project.config, dict) else 'word_count'))
+            default_max = project.config.get('max_words', 10000) if isinstance(project.config, dict) else 10000
+            max_words = _to_int(data.get('max_words', default_max), default_max)
+        else:
+            default_mode = project.config.get('segment_mode', 'word_count') if isinstance(project.config, dict) else 'word_count'
+            segment_mode = request.form.get('segment_mode', default_mode) or default_mode
+            default_max = project.config.get('max_words', 10000) if isinstance(project.config, dict) else 10000
+            max_words = _to_int(request.form.get('max_words', default_max), default_max)
+
+        # 执行重新分段
+        success, error = ProjectService.resegment_project(project_id, segment_mode, max_words)
+        if not success:
+            return jsonify({'success': False, 'error': error or '重新分段失败'}), 400
+
+        return jsonify({'success': True, 'message': '重新分段完成，已重置为待处理'})
+    except Exception as e:
+        logger.error(f'重新分段失败: {str(e)}', exc_info=True)
+        return jsonify({'success': False, 'error': f'重新分段失败: {str(e)}'}), 500

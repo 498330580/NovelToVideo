@@ -10,6 +10,8 @@
             <a href="{{ url_for('project.index') }}" class="btn btn-secondary">返回列表</a>
         </div>
     </div>
+    {# 保护性定义配置字典，仅当 project.config 为映射类型时使用，否则为空字典 #}
+    {% set cfg = project.config if project.config is mapping else {} %}
     
     <div class="info-card">
         <h3>基本信息</h3>
@@ -77,7 +79,7 @@
         
         {% if stats.total_segments > 0 %}
         <div class="progress-bar">
-            <div class="progress-fill" style="width: {{ (stats.completed_segments / stats.total_segments * 100) | int }}%"></div>
+            <div class="progress-fill" style="width: 0%" data-width="{{ (stats.completed_segments / stats.total_segments * 100) | int }}"></div>
         </div>
         <p class="progress-text">完成进度: {{ (stats.completed_segments / stats.total_segments * 100) | int }}%</p>
         {% endif %}
@@ -134,9 +136,32 @@
         {% endif %}
     </div>
     {% endif %}
+
+    <div class="info-card">
+        <h3>操作</h3>
+        <div class="action-grid" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+            <button id="btnRetryTTS" class="btn btn-primary">
+                {% if project.status == 'failed' %}重试语音合成{% else %}开始/重试语音合成{% endif %}
+            </button>
+            <button id="btnGenerateVideo" class="btn btn-success" {% if stats and stats.completed_segments == 0 %}disabled{% endif %}>
+                生成视频
+            </button>
+            <div class="resegment-box" style="display:flex;gap:8px;align-items:center;">
+                <label>重新分段:</label>
+                <select id="segmentMode" class="form-control">
+                    <option value="word_count" {% if cfg.get('segment_mode') == 'word_count' %}selected="selected"{% endif %}>按字数</option>
+                    <option value="chapter" {% if cfg.get('segment_mode') == 'chapter' %}selected="selected"{% endif %}>按章节</option>
+                </select>
+                <input id="maxWords" type="number" class="form-control" style="width:120px;" min="100" max="50000" step="100" value="{{ cfg.get('max_words', 10000) }}" />
+                <button id="btnResegment" class="btn btn-warning">执行</button>
+            </div>
+        </div>
+        <p class="hint" style="margin-top:8px;color:#888;">提示：生成视频需至少有一个已完成的语音段落。</p>
+    </div>
     
     <div class="info-card">
         <h3>配置信息</h3>
+        {% if project.config is mapping and project.config.items %}
         <div class="config-grid">
             {% for key, value in project.config.items() %}
             <div class="config-item">
@@ -145,17 +170,91 @@
             </div>
             {% endfor %}
         </div>
+        {% else %}
+        <p>暂无配置</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// 设置进度条宽度，避免在 style 中直接插入模板表达式造成 CSS 校验器报错
+document.addEventListener('DOMContentLoaded', function() {
+    var fill = document.querySelector('.progress-fill');
+    if (fill && fill.dataset && fill.dataset.width) {
+        var w = parseInt(fill.dataset.width, 10);
+        if (!isNaN(w) && w >= 0 && w <= 100) {
+            fill.style.width = w + '%';
+        }
+    }
+});
 // 自动刷新页面以更新进度(仅在处理中时)
 {% if project.status == 'processing' %}
 setTimeout(function() {
     location.reload();
 }, 5000); // 每5秒刷新一次
 {% endif %}
+
+// 操作按钮事件绑定
+var btnRetryTTS = document.getElementById('btnRetryTTS');
+if (btnRetryTTS) btnRetryTTS.addEventListener('click', async function() {
+    try {
+        const res = await fetch(`{{ url_for('project.retry_tts', project_id=project.id) }}`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || '已提交语音合成任务');
+            location.reload();
+        } else {
+            alert(data.error || '提交失败');
+        }
+    } catch (e) {
+        alert('网络错误，稍后重试');
+    }
+});
+
+var btnGenerateVideo = document.getElementById('btnGenerateVideo');
+if (btnGenerateVideo) btnGenerateVideo.addEventListener('click', async function() {
+    try {
+        const res = await fetch(`{{ url_for('project.generate_video', project_id=project.id) }}`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || '已提交视频生成任务');
+            location.reload();
+        } else {
+            alert(data.error || '提交失败');
+        }
+    } catch (e) {
+        alert('网络错误，稍后重试');
+    }
+});
+
+var btnResegment = document.getElementById('btnResegment');
+if (btnResegment) btnResegment.addEventListener('click', async function() {
+    var segmentModeEl = document.getElementById('segmentMode');
+    var maxWordsEl = document.getElementById('maxWords');
+    const mode = segmentModeEl ? segmentModeEl.value : 'word_count';
+    const maxWords = parseInt(maxWordsEl ? maxWordsEl.value : '10000', 10);
+    try {
+        const res = await fetch(`{{ url_for('project.resegment', project_id=project.id) }}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ segment_mode: mode, max_words: maxWords })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || '重新分段完成');
+            location.reload();
+        } else {
+            alert(data.error || '重新分段失败');
+        }
+    } catch (e) {
+        alert('网络错误，稍后重试');
+    }
+});
 </script>
 {% endblock %}

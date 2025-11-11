@@ -29,6 +29,7 @@ class TTSService:
         Returns:
             (成功标志, 错误信息)
         """
+        task_id = None
         try:
             # 创建任务
             task_id = Task.create(project_id, Task.TYPE_AUDIO_SYNTHESIS)
@@ -37,9 +38,14 @@ class TTSService:
             # 更新项目状态
             Project.update_status(project_id, Project.STATUS_PROCESSING)
             
-            # 获取项目配置
+            # 获取项目配置（容错：项目/配置可能为 None）
             project = Project.get_by_id(project_id)
-            config = project.config
+            if not project:
+                error_msg = '项目不存在，无法进行语音合成'
+                Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                Project.update_status(project_id, Project.STATUS_FAILED)
+                return False, error_msg
+            config = project.config if isinstance(project.config, dict) else {}
             
             # 获取待处理的段落
             segments = TextSegment.get_pending_segments(project_id)
@@ -47,7 +53,9 @@ class TTSService:
             
             if total_segments == 0:
                 logger.info(f'没有待合成的段落: 项目ID={project_id}')
+                # 无段落可处理，任务直接完成，并将项目状态更新为已完成，避免页面长时间处于“处理中”
                 Task.update_status(task_id, Task.STATUS_COMPLETED)
+                Project.update_status(project_id, Project.STATUS_COMPLETED)
                 return True, None
             
             logger.info(f'开始语音合成: 项目ID={project_id}, 段落数={total_segments}')
@@ -80,12 +88,16 @@ class TTSService:
             else:
                 error_msg = f'部分段落合成失败: 成功{completed_count}, 失败{failed_count}'
                 Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                # 更新项目状态为失败
+                Project.update_status(project_id, Project.STATUS_FAILED)
                 return False, error_msg
                 
         except Exception as e:
             logger.error(f'语音合成失败: {str(e)}', exc_info=True)
             if task_id:
                 Task.update_status(task_id, Task.STATUS_FAILED, str(e))
+            # 更新项目状态为失败
+            Project.update_status(project_id, Project.STATUS_FAILED)
             return False, str(e)
     
     @staticmethod
@@ -111,6 +123,12 @@ class TTSService:
         pitch = config.get('pitch', DefaultConfig.DEFAULT_PITCH)
         volume = config.get('volume', DefaultConfig.DEFAULT_VOLUME)
         
+        # 文本内容防御性处理：空文本直接标记失败，避免 TTS 抛错
+        safe_text = (segment.content or '').strip()
+        if not safe_text:
+            TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_FAILED)
+            raise Exception('文本内容为空，无法合成语音')
+
         # 调用 Edge TTS 合成语音
         retry_count = 0
         max_retries = DefaultConfig.TTS_RETRY_COUNT
@@ -119,7 +137,7 @@ class TTSService:
             try:
                 # 使用异步方式调用 edge-tts
                 asyncio.run(TTSService._async_synthesize(
-                    segment.content,
+                    safe_text,
                     voice,
                     rate,
                     pitch,

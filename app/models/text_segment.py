@@ -85,10 +85,16 @@ class TextSegment:
         """
         query = 'SELECT * FROM text_segments WHERE id = ?'
         rows = execute_query(query, (segment_id,))
-        
-        if rows:
-            return cls._from_row(rows[0])
-        return None
+        # 防御性处理返回类型：确保可迭代且至少一个元素
+        if not rows:
+            return None
+        try:
+            first = rows[0] if isinstance(rows, (list, tuple)) and rows else None
+        except Exception:
+            first = None
+        if first is None:
+            return None
+        return cls._from_row(first)
     
     @classmethod
     def get_by_project(cls, project_id):
@@ -107,7 +113,8 @@ class TextSegment:
             ORDER BY segment_index
         '''
         rows = execute_query(query, (project_id,))
-        
+        if not isinstance(rows, (list, tuple)):
+            rows = []
         return [cls._from_row(row) for row in rows]
     
     @classmethod
@@ -132,7 +139,8 @@ class TextSegment:
             query += f' LIMIT {limit}'
         
         rows = execute_query(query, (project_id, cls.AUDIO_STATUS_PENDING))
-        
+        if not isinstance(rows, (list, tuple)):
+            rows = []
         return [cls._from_row(row) for row in rows]
     
     @classmethod
@@ -177,8 +185,37 @@ class TextSegment:
             ORDER BY segment_index
         '''
         rows = execute_query(query, (project_id, cls.AUDIO_STATUS_COMPLETED))
-        
+        if not isinstance(rows, (list, tuple)):
+            rows = []
         return [cls._from_row(row) for row in rows]
+
+    @classmethod
+    def reset_audio_status_by_project(cls, project_id, from_status, to_status):
+        """
+        重置项目内指定音频状态的段落为新状态
+        
+        Args:
+            project_id: 项目ID
+            from_status: 原状态
+            to_status: 新状态
+        """
+        query = '''
+            UPDATE text_segments
+            SET audio_status = ?
+            WHERE project_id = ? AND audio_status = ?
+        '''
+        execute_query(query, (to_status, project_id, from_status), fetch=False)
+
+    @classmethod
+    def delete_by_project(cls, project_id):
+        """
+        删除项目的所有文本段落
+        
+        Args:
+            project_id: 项目ID
+        """
+        query = 'DELETE FROM text_segments WHERE project_id = ?'
+        execute_query(query, (project_id,), fetch=False)
     
     @classmethod
     def _from_row(cls, row):
@@ -191,16 +228,28 @@ class TextSegment:
         Returns:
             TextSegment对象
         """
+        # 使用安全的字典访问，避免类型检查器对未知/不支持 __getitem__ 的对象报错
+        try:
+            get = row.get  # 优先使用映射类型的 get
+        except AttributeError:
+            # 兜底处理，尝试按字典构造
+            try:
+                row = dict(row)
+                get = row.get
+            except Exception:
+                # 无法转为字典时直接抛出更易读的异常
+                raise TypeError(f"无法从行对象构建 TextSegment，期望映射类型，得到: {type(row)}")
+
         return cls(
-            id=row['id'],
-            project_id=row['project_id'],
-            segment_index=row['segment_index'],
-            content=row['content'],
-            word_count=row['word_count'],
-            chapter_title=row['chapter_title'],
-            audio_status=row['audio_status'],
-            audio_path=row['audio_path'],
-            created_at=row['created_at']
+            id=get('id'),
+            project_id=get('project_id'),
+            segment_index=get('segment_index'),
+            content=get('content'),
+            word_count=get('word_count'),
+            chapter_title=get('chapter_title'),
+            audio_status=get('audio_status', cls.AUDIO_STATUS_PENDING),
+            audio_path=get('audio_path'),
+            created_at=get('created_at')
         )
     
     def to_dict(self):
@@ -210,11 +259,15 @@ class TextSegment:
         Returns:
             段落信息字典
         """
+        # 处理 content 为 None 的情况，避免 len/切片错误
+        _content = self.content or ''
+        _content_preview = _content[:100] + '...' if len(_content) > 100 else _content
+
         return {
             'id': self.id,
             'project_id': self.project_id,
             'segment_index': self.segment_index,
-            'content': self.content[:100] + '...' if len(self.content) > 100 else self.content,
+            'content': _content_preview,
             'word_count': self.word_count,
             'chapter_title': self.chapter_title,
             'audio_status': self.audio_status,

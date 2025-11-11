@@ -106,7 +106,7 @@ class ProjectService:
                 return False, '项目不存在'
             
             # 删除输出文件
-            if os.path.exists(project.output_path):
+            if project.output_path and os.path.exists(project.output_path):
                 FileHandler.delete_directory(project.output_path)
             
             # 删除临时文件
@@ -154,7 +154,7 @@ class ProjectService:
             
             total_segments = len(segments)
             completed_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_COMPLETED)
-            total_words = sum(s.word_count for s in segments)
+            total_words = sum((s.word_count or 0) for s in segments)
             
             return {
                 'total_segments': total_segments,
@@ -167,7 +167,7 @@ class ProjectService:
         except Exception as e:
             logger.error(f'获取项目统计信息失败: {str(e)}', exc_info=True)
             return None
-    
+
     @staticmethod
     def _get_default_config():
         """
@@ -189,3 +189,57 @@ class ProjectService:
             'segment_mode': DefaultConfig.DEFAULT_SEGMENT_MODE,
             'max_words': DefaultConfig.DEFAULT_MAX_WORDS
         }
+
+    @staticmethod
+    def resegment_project(project_id, segment_mode=None, max_words=None):
+        """
+        重新分段项目文本
+        
+        - 以现有段落内容重建原始文本
+        - 删除旧段落并按新配置重新分段
+        - 项目重置为待处理状态
+        
+        Args:
+            project_id: 项目ID
+            segment_mode: 分段模式（chapter/word_count）
+            max_words: 单段最大字数
+        
+        Returns:
+            (成功标志, 错误信息)
+        """
+        try:
+            project = Project.get_by_id(project_id)
+            if not project:
+                return False, '项目不存在'
+
+            # 获取现有段落，如果没有段落则无法重构文本
+            segments = TextSegment.get_by_project(project_id)
+            if not segments:
+                return False, '项目暂无文本段落，无法重新分段'
+
+            # 重建原始文本（按换行连接，保持自然段落分隔）
+            # 过滤掉空内容，避免 join 报错
+            text_content = '\n'.join([s.content for s in segments if s.content])
+
+            # 删除旧段落
+            TextSegment.delete_by_project(project_id)
+
+            # 构造新配置（以项目配置为基础）
+            config = project.config if isinstance(project.config, dict) else {}
+            if segment_mode:
+                config['segment_mode'] = segment_mode
+            if max_words:
+                config['max_words'] = max_words
+
+            # 创建文本导入任务并重新分段
+            task_id = Task.create(project_id, Task.TYPE_TEXT_IMPORT)
+
+            from app.services.text_processor import TextProcessor
+            ok, err = TextProcessor.process_text(project_id, text_content, config, task_id)
+            if not ok:
+                return False, err or '文本重新分段失败'
+
+            return True, None
+        except Exception as e:
+            logger.error(f'重新分段失败: {str(e)}', exc_info=True)
+            return False, f'重新分段失败: {str(e)}'

@@ -121,28 +121,47 @@ python run.py
 - 查看任务历史记录
 - 错误日志查看
 
-## 项目结构
+
+### 目录结构
 
 ```
-novel-to-video/
-├── app/                        # 应用主目录
-│   ├── __init__.py            # Flask应用初始化
-│   ├── models/                # 数据模型
-│   ├── services/              # 业务逻辑服务
-│   ├── routes/                # 路由处理
-│   ├── templates/             # HTML模板
-│   ├── static/                # 静态资源
-│   └── utils/                 # 工具模块
-├── config/                    # 配置文件
-├── migrations/                # 数据库迁移脚本
-├── output/                    # 输出目录(生成的视频)
-├── temp/                      # 临时文件目录
-├── logs/                      # 日志目录
-├── data/                      # 数据库文件
-├── requirements.txt           # 依赖清单
-├── run.py                     # 应用入口
-└── README.md                  # 项目说明
-
+app/
+├── models/
+│   ├── project.py             # 项目模型与状态管理
+│   ├── task.py                # 任务模型与状态管理
+│   ├── text_segment.py        # 文本分段模型
+│   └── video_segment.py       # 视频分段模型
+├── services/
+│   ├── project_service.py     # 项目管理服务
+│   ├── task_scheduler.py      # 后台任务调度与执行
+│   ├── tts_service.py         # 语音合成服务
+│   ├── video_service.py       # 视频生成服务
+│   └── text_processor.py      # 文本分段与预处理
+├── routes/
+│   ├── project_routes.py      # 项目相关 REST 接口与页面路由
+│   ├── task_routes.py         # 任务查询接口
+│   └── config_routes.py       # 配置相关接口
+├── utils/
+│   ├── database.py            # 数据库工具与连接管理
+│   ├── file_handler.py        # 文件工具
+│   └── logger.py              # 日志工具
+├── templates/
+│   ├── base.html              # 基础布局
+│   ├── dashboard.html         # 首页仪表盘
+│   ├── project_list.html      # 项目列表
+│   ├── project_detail.html    # 项目详情
+│   └── project_create.html    # 创建项目
+├── static/
+│   ├── css/                   # 样式
+│   └── js/                    # 脚本
+config/
+├── __init__.py
+├── default.py                 # 默认配置
+└── development.py             # 开发环境配置
+migrations/
+└── init_db.sql                # 初始化数据库脚本
+requirements.txt               # 依赖列表
+run.py                         # 应用入口
 ```
 
 ## 使用流程

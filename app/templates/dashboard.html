@@ -120,7 +120,7 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <small class="text-muted">{{ project.created_at[:10] if project.created_at else '-' }}</small>
+                                    <small class="text-muted">{{ project.created_at.strftime('%Y-%m-%d') if project.created_at else '-' }}</small>
                                 </td>
                                 <td class="text-center">
                                     <a href="{{ url_for('project.detail', project_id=project.id) }}" class="btn btn-sm btn-outline-primary">

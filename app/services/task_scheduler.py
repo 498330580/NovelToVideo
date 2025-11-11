@@ -23,12 +23,23 @@ class TaskScheduler:
     # 运行标志
     _running = False
     
+    # Flask应用实例
+    _app = None
+    
     @staticmethod
-    def start():
-        """启动任务调度器"""
+    def start(app=None):
+        """启动任务调度器
+        
+        Args:
+            app: Flask应用实例，用于在线程中推送应用上下文
+        """
         if TaskScheduler._running:
             logger.warning('任务调度器已经在运行')
             return
+        
+        # 记录应用实例以便在线程中使用应用上下文
+        if app is not None:
+            TaskScheduler._app = app
         
         TaskScheduler._running = True
         TaskScheduler._scheduler_thread = threading.Thread(
@@ -136,8 +147,14 @@ class TaskScheduler:
         try:
             from app.services.tts_service import TTSService
             
-            logger.info(f'开始执行语音合成任务: 项目ID={project_id}')
-            success, error = TTSService.synthesize_project(project_id)
+            # 在线程内推送应用上下文，避免数据库访问报错
+            if TaskScheduler._app is not None:
+                with TaskScheduler._app.app_context():
+                    logger.info(f'开始执行语音合成任务: 项目ID={project_id}')
+                    success, error = TTSService.synthesize_project(project_id)
+            else:
+                logger.info(f'开始执行语音合成任务: 项目ID={project_id}')
+                success, error = TTSService.synthesize_project(project_id)
             
             if success:
                 logger.info(f'语音合成任务完成: 项目ID={project_id}')
@@ -163,8 +180,14 @@ class TaskScheduler:
         try:
             from app.services.video_service import VideoService
             
-            logger.info(f'开始执行视频生成任务: 项目ID={project_id}')
-            success, error = VideoService.generate_project_videos(project_id)
+            # 在线程内推送应用上下文，避免数据库访问报错
+            if TaskScheduler._app is not None:
+                with TaskScheduler._app.app_context():
+                    logger.info(f'开始执行视频生成任务: 项目ID={project_id}')
+                    success, error = VideoService.generate_project_videos(project_id)
+            else:
+                logger.info(f'开始执行视频生成任务: 项目ID={project_id}')
+                success, error = VideoService.generate_project_videos(project_id)
             
             if success:
                 logger.info(f'视频生成任务完成: 项目ID={project_id}')
