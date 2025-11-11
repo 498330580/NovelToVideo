@@ -139,22 +139,34 @@
 
     <div class="info-card">
         <h3>操作</h3>
-        <div class="action-grid" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
-            <button id="btnRetryTTS" class="btn btn-primary">
-                {% if project.status == 'failed' %}重试语音合成{% else %}开始/重试语音合成{% endif %}
-            </button>
-            <button id="btnGenerateVideo" class="btn btn-success" {% if stats and stats.completed_segments == 0 %}disabled{% endif %}>
-                生成视频
-            </button>
-            <div class="resegment-box" style="display:flex;gap:8px;align-items:center;">
-                <label>重新分段:</label>
-                <select id="segmentMode" class="form-control">
-                    <option value="word_count" {% if cfg.get('segment_mode') == 'word_count' %}selected="selected"{% endif %}>按字数</option>
-                    <option value="chapter" {% if cfg.get('segment_mode') == 'chapter' %}selected="selected"{% endif %}>按章节</option>
-                </select>
-                <input id="maxWords" type="number" class="form-control" style="width:120px;" min="100" max="50000" step="100" value="{{ cfg.get('max_words', 10000) }}" />
-                <button id="btnResegment" class="btn btn-warning">执行</button>
+        <div class="action-steps">
+            <div class="step-card">
+                <div class="step-title">步骤一：语音合成</div>
+                <p class="step-desc">将文本段落合成为音频文件。</p>
+                <div class="step-actions">
+                    <button id="btnRetryTTS" class="btn btn-primary">
+                        {% if project.status == 'failed' %}重试语音合成{% else %}开始/重试语音合成{% endif %}
+                    </button>
+                </div>
             </div>
+            <div class="step-card">
+                <div class="step-title">步骤二：生成视频</div>
+                <p class="step-desc">使用已完成的音频生成视频。</p>
+                <div class="step-actions">
+                    <button id="btnGenerateVideo" class="btn btn-success" {% if stats and stats.completed_segments == 0 %}disabled{% endif %}>
+                        生成视频
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="resegment-box" style="margin-top:12px;">
+            <label>重新分段（可选）:</label>
+            <select id="segmentMode" class="form-control">
+                <option value="word_count" {% if cfg.get('segment_mode') == 'word_count' %}selected="selected"{% endif %}>按字数</option>
+                <option value="chapter" {% if cfg.get('segment_mode') == 'chapter' %}selected="selected"{% endif %}>按章节</option>
+            </select>
+            <input id="maxWords" type="number" class="form-control input-small" min="100" max="50000" step="100" value="{{ cfg.get('max_words', 10000) }}" />
+            <button id="btnResegment" class="btn btn-warning">执行</button>
         </div>
         <p class="hint" style="margin-top:8px;color:#888;">提示：生成视频需至少有一个已完成的语音段落。</p>
     </div>

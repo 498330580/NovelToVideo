@@ -1184,3 +1184,69 @@ hr {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+/* 操作区布局优化 */
+.action-grid {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.action-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.step-card {
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.step-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.step-desc {
+  color: #666;
+  font-size: 0.95em;
+  margin: 0 0 10px 0;
+}
+
+.step-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.resegment-box {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.input-small {
+  width: 120px;
+}
+
+@media (max-width: 640px) {
+  .action-grid {
+    align-items: stretch;
+  }
+  .action-grid .btn {
+    width: 100%;
+  }
+  .action-steps {
+    grid-template-columns: 1fr;
+  }
+  .resegment-box {
+    flex-wrap: wrap;
+  }
+  .resegment-box .form-control {
+    width: 100%;
+    max-width: 100%;
+  }
+}
