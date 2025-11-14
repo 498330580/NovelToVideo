@@ -53,7 +53,7 @@ class TTSService:
             
             if total_segments == 0:
                 logger.info(f'没有待合成的段落: 项目ID={project_id}')
-                # 无段落可处理，任务直接完成，并将项目状态更新为已完成，避免页面长时间处于“处理中”
+                # 无段落可处理，任务直接完成，并将项目状态更新为已完成，避免页面长时间处于"处理中"
                 Task.update_status(task_id, Task.STATUS_COMPLETED)
                 Project.update_status(project_id, Project.STATUS_COMPLETED)
                 return True, None
@@ -183,6 +183,7 @@ class TTSService:
         try:
             import edge_tts
             
+            # 创建通讯对象
             communicate = edge_tts.Communicate(
                 text,
                 voice,
@@ -191,8 +192,19 @@ class TTSService:
                 volume=volume
             )
             
+            # 尝试保存音频文件
             await communicate.save(output_path)
             
         except Exception as e:
-            logger.error(f'Edge TTS 调用失败: {str(e)}', exc_info=True)
+            # 记录详细的错误信息
+            logger.error(f'Edge TTS 调用失败: {str(e)}')
+            
+            # 如果是网络相关错误，提供更详细的错误信息
+            error_msg = str(e).lower()
+            if '403' in error_msg or 'invalid response status' in error_msg or 'connection' in error_msg:
+                logger.warning('检测到网络访问问题，请检查：')
+                logger.warning('1. 确保网络连接正常')
+                logger.warning('2. 检查防火墙或代理设置')
+                logger.warning('3. 确认可以访问 speech.platform.bing.com')
+                
             raise

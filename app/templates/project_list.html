@@ -85,7 +85,7 @@
                                 <a href="{{ url_for('project.detail', project_id=project.id) }}" class="btn btn-outline-primary" title="查看详情">
                                     <i class="fas fa-eye"></i>
                                 </a>
-                                <button type="button" class="btn btn-outline-danger" data-project-id="{{ project.id }}" data-project-name="{{ project.name }}" onclick="deleteProject(this)" title="削除项目">
+                                <button type="button" class="btn btn-outline-danger" data-project-id="{{ project.id }}" data-project-name="{{ project.name }}" onclick="deleteProject(this)" title="删除项目">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
@@ -109,6 +109,8 @@
         </div>
     </div>
     {% endif %}
+    
+
 </div>
 {% endblock %}
 
@@ -163,40 +165,56 @@
         background-color: #6c757d !important;
         color: white;
     }
+    
+
 </style>
 
 {% block scripts %}
 <script>
 function deleteProject(button) {
+    console.log('Delete button clicked');
     const projectId = button.getAttribute('data-project-id');
     const projectName = button.getAttribute('data-project-name');
     
-    if (!confirm(`确定要削除项目 " ${projectName} " 吗?此操作不可恢复!`)) {
-        return;
-    }
+    console.log('Project ID:', projectId);
+    console.log('Project Name:', projectName);
     
-    // 改变按髦状态
+    // 使用浏览器原生确认对话框
+    if (confirm(`确定要删除项目 "${projectName}" 吗？此操作不可恢复！`)) {
+        // 用户确认删除，执行删除操作
+        performDelete(button, projectId);
+    }
+}
+
+function performDelete(button, projectId) {
+    // 改变按钮状态
     button.disabled = true;
     button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     
     fetch(`/project/${projectId}/delete`, {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
     })
     .then(response => response.json())
     .then(result => {
         if (result.success) {
-            notify.success('项目削除成功');
+            // 使用Toastr显示成功消息
+            toastr.success('项目删除成功');
             setTimeout(() => {
                 location.reload();
-            }, 1000);
+            }, 1500);
         } else {
-            notify.error('削除失败: ' + result.error);
+            // 使用Toastr显示错误消息
+            toastr.error('删除失败: ' + result.error);
             button.disabled = false;
             button.innerHTML = '<i class="fas fa-trash"></i>';
         }
     })
     .catch(error => {
-        notify.error('削除失败: ' + error.message);
+        // 使用Toastr显示错误消息
+        toastr.error('删除失败: ' + error.message);
         button.disabled = false;
         button.innerHTML = '<i class="fas fa-trash"></i>';
     });
