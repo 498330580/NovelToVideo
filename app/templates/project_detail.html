@@ -139,7 +139,14 @@
 
     <div class="info-card">
         <h3>操作</h3>
-        <div class="action-steps">
+        {% if project.status == 'pending' %}
+        <div class="alert alert-info">
+            <p>项目已创建，但尚未开始处理。点击下面的按钮开始处理任务。</p>
+            <button id="btnStartProcessing" class="btn btn-primary">开始处理</button>
+        </div>
+        {% endif %}
+        
+        <div class="action-steps" {% if project.status == 'pending' %}style="display:none;"{% endif %}>
             <div class="step-card">
                 <div class="step-title">步骤一：语音合成</div>
                 <p class="step-desc">将文本段落合成为音频文件。</p>
@@ -200,13 +207,15 @@ document.addEventListener('DOMContentLoaded', function() {
             fill.style.width = w + '%';
         }
     }
+    
+    // 自动刷新页面以更新进度(仅在处理中时)
+    const projectStatus = '{{ project.status }}';
+    if (projectStatus === 'processing') {
+        setTimeout(function() {
+            location.reload();
+        }, 5000); // 每5秒刷新一次
+    }
 });
-// 自动刷新页面以更新进度(仅在处理中时)
-{% if project.status == 'processing' %}
-setTimeout(function() {
-    location.reload();
-}, 5000); // 每5秒刷新一次
-{% endif %}
 
 // 操作按钮事件绑定
 var btnRetryTTS = document.getElementById('btnRetryTTS');
@@ -266,6 +275,39 @@ if (btnResegment) btnResegment.addEventListener('click', async function() {
         }
     } catch (e) {
         alert('网络错误，稍后重试');
+    }
+});
+
+// 开始处理按钮事件绑定
+var btnStartProcessing = document.getElementById('btnStartProcessing');
+if (btnStartProcessing) btnStartProcessing.addEventListener('click', async function() {
+    if (!confirm('确定要开始处理这个项目吗？')) {
+        return;
+    }
+    
+    // 禁用按钮防止重复点击
+    btnStartProcessing.disabled = true;
+    btnStartProcessing.textContent = '处理中...';
+    
+    try {
+        const res = await fetch(`{{ url_for('project.start_processing', project_id=project.id) }}`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || '已提交语音合成任务');
+            location.reload();
+        } else {
+            alert(data.error || '提交失败');
+            // 恢复按钮状态
+            btnStartProcessing.disabled = false;
+            btnStartProcessing.textContent = '开始处理';
+        }
+    } catch (e) {
+        alert('网络错误，稍后重试');
+        // 恢复按钮状态
+        btnStartProcessing.disabled = false;
+        btnStartProcessing.textContent = '开始处理';
     }
 });
 </script>

@@ -116,13 +116,11 @@ def create():
         if error:
             return jsonify({'success': False, 'error': error}), 400
         
-        # 提交语音合成任务
-        TaskScheduler.submit_tts_task(project_id)
-        
+        # 不再自动提交任务，而是返回成功信息
         return jsonify({
             'success': True,
             'project_id': project_id,
-            'message': '项目创建成功,正在处理中...'
+            'message': '项目创建成功，请点击开始处理按钮启动任务'
         })
         
     except Exception as e:
@@ -222,6 +220,33 @@ def generate_video(project_id):
     except Exception as e:
         logger.error(f'提交视频生成任务失败: {str(e)}', exc_info=True)
         return jsonify({'success': False, 'error': f'提交失败: {str(e)}'}), 500
+
+
+@project_bp.route('/<int:project_id>/start', methods=['POST'])
+def start_processing(project_id):
+    """开始处理项目任务
+    
+    - 提交语音合成任务到调度器
+    """
+    try:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            return jsonify({'success': False, 'error': '项目不存在'}), 404
+
+        # 检查项目状态
+        if project.status != 'pending':
+            return jsonify({'success': False, 'error': '项目状态不是待处理，无法开始处理'}), 400
+
+        # 提交语音合成任务
+        TaskScheduler.submit_tts_task(project_id)
+        
+        # 更新项目状态为处理中
+        Project.update_status(project_id, Project.STATUS_PROCESSING)
+
+        return jsonify({'success': True, 'message': '已提交语音合成任务'})
+    except Exception as e:
+        logger.error(f'开始处理任务失败: {str(e)}', exc_info=True)
+        return jsonify({'success': False, 'error': f'开始处理任务失败: {str(e)}'}), 500
 
 
 @project_bp.route('/<int:project_id>/resegment', methods=['POST'])
