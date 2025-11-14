@@ -5,6 +5,9 @@ from app.services.task_scheduler import TaskScheduler
 from app.models.project import Project
 from app.models.text_segment import TextSegment
 from app.utils.logger import get_logger
+from app.utils.file_handler import FileHandler
+from config import DefaultConfig
+import os
 
 logger = get_logger(__name__)
 
@@ -70,6 +73,19 @@ def create():
             pitch = request.form.get('pitch', '+0Hz')
             volume = request.form.get('volume', '+0%')
         
+        # 处理背景图片上传
+        background_option = request.form.get('background_option', 'default')
+        custom_background_path = None
+        
+        if background_option == 'custom' and 'background_image' in request.files:
+            background_file = request.files['background_image']
+            if background_file and background_file.filename:
+                # 保存自定义背景图片
+                safe_filename = FileHandler.safe_filename(background_file.filename)
+                custom_background_path = os.path.join(DefaultConfig.TEMP_IMAGE_DIR, 'custom_backgrounds', safe_filename)
+                FileHandler.ensure_dir(os.path.dirname(custom_background_path))
+                background_file.save(custom_background_path)
+        
         # 获取配置参数
         config = {
             'voice': voice,
@@ -82,7 +98,9 @@ def create():
             'format': fmt,
             'segment_duration': segment_duration,
             'segment_mode': segment_mode,
-            'max_words': max_words
+            'max_words': max_words,
+            'background_option': background_option,
+            'custom_background_path': custom_background_path
         }
         
         # 验证必填字段

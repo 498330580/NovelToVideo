@@ -61,11 +61,20 @@ class VideoService:
             # 安全的项目名称
             safe_project_name = project.name or f'项目_{project_id}'
 
-            background_image = VideoService._generate_background_image(
-                safe_project_name,
-                config,
-                temp_image_dir
-            )
+            # 检查是否使用自定义背景图片
+            background_option = config.get('background_option', 'default')
+            custom_background_path = config.get('custom_background_path')
+            
+            if background_option == 'custom' and custom_background_path and os.path.exists(custom_background_path):
+                # 使用自定义背景图片
+                background_image = custom_background_path
+            else:
+                # 生成默认背景图片
+                background_image = VideoService._generate_background_image(
+                    safe_project_name,
+                    config,
+                    temp_image_dir
+                )
             
             # 生成视频片段
             video_clips = []

@@ -162,6 +162,31 @@
             </div>
         </div>
 
+        <div class="form-section">
+            <h3>视频背景图片</h3>
+            
+            <div class="form-group">
+                <label for="use_custom_background">背景图片选项</label>
+                <div class="radio-group">
+                    <label class="radio-option">
+                        <input type="radio" name="background_option" value="default" checked>
+                        <span>使用默认背景</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="background_option" value="custom">
+                        <span>上传自定义背景图片</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group" id="background_upload_section" style="display: none;">
+                <label for="background_image">上传背景图片</label>
+                <input type="file" id="background_image" name="background_image" accept="image/*">
+                <small class="form-help">支持JPG、PNG格式，建议分辨率与视频分辨率匹配</small>
+                <div id="background_status" class="file-status" style="display: none;"></div>
+            </div>
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">创建项目</button>
             <button type="reset" class="btn btn-secondary">重置</button>
@@ -361,12 +386,76 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 
+// 背景图片选项切换
+document.querySelectorAll('input[name="background_option"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const uploadSection = document.getElementById('background_upload_section');
+        if (this.value === 'custom') {
+            uploadSection.style.display = 'block';
+        } else {
+            uploadSection.style.display = 'none';
+            // 清除已选择的文件
+            document.getElementById('background_image').value = '';
+            document.getElementById('background_status').style.display = 'none';
+        }
+    });
+});
+
+// 背景图片文件验证
+document.getElementById('background_image').addEventListener('change', function() {
+    const file = this.files[0];
+    const statusDiv = document.getElementById('background_status');
+    
+    if (!file) {
+        statusDiv.style.display = 'none';
+        return;
+    }
+    
+    // 检查文件类型
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+        showBackgroundError('仅支持JPG、PNG格式的图片');
+        this.value = '';
+        return;
+    }
+    
+    // 检查文件大小 (最大10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+        showBackgroundError('图片大小不能超过10MB');
+        this.value = '';
+        return;
+    }
+    
+    showBackgroundSuccess(`已选择图片: ${file.name}`);
+});
+
+function showBackgroundLoading(message) {
+    const statusDiv = document.getElementById('background_status');
+    statusDiv.className = 'file-status loading';
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+}
+
+function showBackgroundSuccess(message) {
+    const statusDiv = document.getElementById('background_status');
+    statusDiv.className = 'file-status success';
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+}
+
+function showBackgroundError(message) {
+    const statusDiv = document.getElementById('background_status');
+    statusDiv.className = 'file-status error';
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+}
+
 // 创建项目表单提交
 document.getElementById('createProjectForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     
     const form = e.target;
-    const formData = new FormData(form);
     const submitBtn = form.querySelector('button[type="submit"]');
     
     // 验证文本内容
@@ -375,6 +464,19 @@ document.getElementById('createProjectForm').addEventListener('submit', async fu
         alert('文本内容不能为空');
         return;
     }
+    
+    // 检查背景图片选项
+    const backgroundOption = document.querySelector('input[name="background_option"]:checked').value;
+    const backgroundFile = document.getElementById('background_image').files[0];
+    
+    // 如果选择了自定义背景但没有上传文件
+    if (backgroundOption === 'custom' && !backgroundFile) {
+        alert('请选择背景图片文件');
+        return;
+    }
+    
+    // 创建FormData对象
+    const formData = new FormData(form);
     
     // 禁用提交按钟
     submitBtn.disabled = true;
