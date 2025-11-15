@@ -232,6 +232,9 @@ A: 需要先安装 ffmpeg:
 - Linux: `sudo apt-get install ffmpeg`
 - macOS: `brew install ffmpeg`
 
+**Q: Docker部署时视频处理失败?**
+A: Docker镜像中需要安装ffmpeg，已在Dockerfile中添加相关安装命令。
+
 ### 运行问题
 
 **Q: 启动时提示端口被占用?**
