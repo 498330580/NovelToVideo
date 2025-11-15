@@ -41,6 +41,9 @@ class TaskScheduler:
         if app is not None:
             TaskScheduler._app = app
         
+        # 检查并重置系统重启后遗留的处理中项目
+        TaskScheduler._reset_stale_processing_projects()
+        
         TaskScheduler._running = True
         TaskScheduler._scheduler_thread = threading.Thread(
             target=TaskScheduler._schedule_loop,
@@ -209,3 +212,42 @@ class TaskScheduler:
             运行中的任务项目ID列表
         """
         return list(TaskScheduler._running_tasks.keys())
+    
+    @staticmethod
+    def _reset_stale_processing_projects():
+        """重置系统重启后遗留的处理中项目和运行中任务"""
+        try:
+            from app.models.project import Project
+            from app.models.task import Task
+            
+            # 获取所有状态为processing的项目
+            # 在线程内推送应用上下文，避免数据库访问报错
+            if TaskScheduler._app is not None:
+                with TaskScheduler._app.app_context():
+                    projects = Project.get_all()
+                    for project in projects:
+                        if project.status == Project.STATUS_PROCESSING:
+                            # 将状态重置为pending，以便可以重新开始处理
+                            Project.update_status(project.id, Project.STATUS_PENDING)
+                            logger.info(f'重置项目状态: ID={project.id}, Name={project.name} 从 processing 到 pending')
+                    
+                    # 获取所有状态为running的任务并重置为failed
+                    tasks = Task.get_running_tasks()
+                    for task in tasks:
+                        Task.update_status(task.id, Task.STATUS_FAILED, '系统重启导致任务中断')
+                        logger.info(f'重置任务状态: ID={task.id}, Type={task.task_type} 从 running 到 failed')
+            else:
+                projects = Project.get_all()
+                for project in projects:
+                    if project.status == Project.STATUS_PROCESSING:
+                        # 将状态重置为pending，以便可以重新开始处理
+                        Project.update_status(project.id, Project.STATUS_PENDING)
+                        logger.info(f'重置项目状态: ID={project.id}, Name={project.name} 从 processing 到 pending')
+                
+                # 获取所有状态为running的任务并重置为failed
+                tasks = Task.get_running_tasks()
+                for task in tasks:
+                    Task.update_status(task.id, Task.STATUS_FAILED, '系统重启导致任务中断')
+                    logger.info(f'重置任务状态: ID={task.id}, Type={task.task_type} 从 running 到 failed')
+        except Exception as e:
+            logger.error(f'重置处理中项目状态失败: {str(e)}', exc_info=True)
