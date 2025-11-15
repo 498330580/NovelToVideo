@@ -1,0 +1,51 @@
+# Python相关
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.coverage.*
+.cache
+.pytest_cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.gitignore
+README.md
+README-*.md
+LICENSE
+Dockerfile
+.dockerignore
+
+# 虚拟环境
+.venv
+venv
+env
+ENV
+
+# IDE相关
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 临时文件和日志
+*.tmp
+*.temp
+*.bak
+logs/*.log*
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 输出目录中的内容（但保留目录结构）
+output/*
+!output/.gitkeep
+temp/*
+!temp/.gitkeep
