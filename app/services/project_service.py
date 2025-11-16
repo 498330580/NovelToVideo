@@ -4,6 +4,7 @@ import json
 from app.models.project import Project
 from app.models.text_segment import TextSegment
 from app.models.task import Task
+from app.models.video_segment import VideoSegment
 from app.utils.logger import get_logger
 from app.utils.file_handler import FileHandler
 from config import DefaultConfig
@@ -151,17 +152,28 @@ class ProjectService:
             
             segments = TextSegment.get_by_project(project_id)
             tasks = Task.get_by_project(project_id)
+            video_segments = VideoSegment.get_by_project(project_id)
             
             total_segments = len(segments)
             completed_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_COMPLETED)
+            pending_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_PENDING)
             total_words = sum((s.word_count or 0) for s in segments)
+            
+            # 视频统计信息
+            total_video_segments = len(video_segments)
+            completed_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_COMPLETED)
+            pending_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_PENDING)
             
             return {
                 'total_segments': total_segments,
                 'completed_segments': completed_segments,
-                'pending_segments': total_segments - completed_segments,
+                'pending_segments': pending_segments,
                 'total_words': total_words,
-                'tasks': [t.to_dict() for t in tasks]
+                'tasks': [t.to_dict() for t in tasks],
+                # 视频统计信息
+                'total_video_segments': total_video_segments,
+                'completed_video_segments': completed_video_segments,
+                'pending_video_segments': pending_video_segments
             }
             
         except Exception as e:

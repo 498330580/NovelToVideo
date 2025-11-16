@@ -63,9 +63,16 @@ class VideoSegment:
         query = 'SELECT * FROM video_segments WHERE id = ?'
         rows = execute_query(query, (segment_id,))
         
-        if rows:
-            return cls._from_row(rows[0])
-        return None
+        # 防御性处理返回类型：确保可迭代且至少一个元素
+        if not rows:
+            return None
+        try:
+            first = rows[0] if isinstance(rows, (list, tuple)) and rows else None
+        except Exception:
+            first = None
+        if first is None:
+            return None
+        return cls._from_row(first)
     
     @classmethod
     def get_by_project(cls, project_id):
@@ -84,7 +91,8 @@ class VideoSegment:
             ORDER BY segment_index
         '''
         rows = execute_query(query, (project_id,))
-        
+        if not isinstance(rows, (list, tuple)):
+            rows = []
         return [cls._from_row(row) for row in rows]
     
     @classmethod
@@ -98,6 +106,30 @@ class VideoSegment:
         """
         query = 'UPDATE video_segments SET status = ? WHERE id = ?'
         execute_query(query, (status, segment_id), fetch=False)
+    
+    @classmethod
+    def get_by_project_and_index(cls, project_id, segment_index):
+        """
+        获取项目指定索引的视频片段
+        
+        Args:
+            project_id: 项目ID
+            segment_index: 片段索引
+            
+        Returns:
+            VideoSegment对象或None
+        """
+        query = '''
+            SELECT * FROM video_segments 
+            WHERE project_id = ? AND segment_index = ?
+        '''
+        rows = execute_query(query, (project_id, segment_index))
+        if not isinstance(rows, (list, tuple)):
+            rows = []
+        
+        if len(rows) > 0:
+            return cls._from_row(rows[0])
+        return None
     
     @classmethod
     def _from_row(cls, row):

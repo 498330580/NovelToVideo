@@ -265,12 +265,34 @@ class VideoService:
             if start_time >= total_duration:
                 break
             
-            # 截取片段
-            segment_clip = full_video.subclip(start_time, end_time)
-            
-            # 输出文件路径
+            # 检查视频片段是否已存在
             output_filename = f'{safe_name}_{i+1}.{video_format}'
             output_file = os.path.join(output_path, output_filename)
+            
+            # 如果文件已存在且大小大于0，则跳过
+            if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                logger.info(f'视频片段已存在，跳过: {output_filename}')
+                
+                # 检查数据库中是否已记录该片段
+                existing_segment = VideoSegment.get_by_project_and_index(project_id, i)
+                
+                if not existing_segment:
+                    # 保存到数据库
+                    VideoSegment.create(
+                        project_id,
+                        i,
+                        end_time - start_time,
+                        output_file
+                    )
+                
+                # 更新进度
+                progress = 50 + (i + 1) / num_segments * 50  # 后50%进度
+                Task.update_progress(task_id, progress)
+                
+                continue
+            
+            # 截取片段
+            segment_clip = full_video.subclip(start_time, end_time)
             
             # 导出视频
             segment_clip.write_videofile(
