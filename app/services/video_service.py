@@ -244,15 +244,18 @@ class VideoService:
                 
                 if not existing_segment:
                     # 保存到数据库
-                    VideoSegment.create(
+                    segment_id = VideoSegment.create(
                         project_id,
                         i,
                         end_time - start_time,
                         output_file
                     )
+                    # 确保新创建的记录状态为completed
+                    VideoSegment.update_status(segment_id, VideoSegment.STATUS_COMPLETED)
                 else:
                     # 更新现有记录的状态为completed
                     VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_COMPLETED)
+
                 
                 # 更新进度
                 progress = 50 + (i + 1) / num_segments * 50  # 后50%进度
@@ -280,12 +283,14 @@ class VideoService:
             
             if not existing_segment:
                 # 保存到数据库
-                VideoSegment.create(
+                segment_id = VideoSegment.create(
                     project_id,
                     i,
                     end_time - start_time,
                     output_file
                 )
+                # 确保新创建的记录状态为completed
+                VideoSegment.update_status(segment_id, VideoSegment.STATUS_COMPLETED)
             else:
                 # 更新现有记录的状态为completed
                 VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_COMPLETED)
