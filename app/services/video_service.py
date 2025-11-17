@@ -28,19 +28,20 @@ class VideoService:
             (成功标志, 错误信息)
         """
         task_id = None
+        project = None
         try:
             # 创建任务
             task_id = Task.create(project_id, Task.TYPE_VIDEO_GENERATION)
             Task.update_status(task_id, Task.STATUS_RUNNING)
             
-            # 获取项目信息（容错：项目/配置可能为 None）
+            # 获取项目信息
             project = Project.get_by_id(project_id)
             if not project:
-                error_msg = '项目不存在，无法生成视频'
+                error_msg = '项目不存在'
                 Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
-                Project.update_status(project_id, Project.STATUS_FAILED)
                 return False, error_msg
-            config = project.config if isinstance(project.config, dict) else {}
+                
+            config = project.config
             
             # 获取已完成的音频段落
             segments = TextSegment.get_completed_segments(project_id)
@@ -58,23 +59,11 @@ class VideoService:
             FileHandler.ensure_dir(temp_video_dir)
             
             # 生成背景图片
-            # 安全的项目名称
-            safe_project_name = project.name or f'项目_{project_id}'
-
-            # 检查是否使用自定义背景图片
-            background_option = config.get('background_option', 'default')
-            custom_background_path = config.get('custom_background_path')
-            
-            if background_option == 'custom' and custom_background_path and os.path.exists(custom_background_path):
-                # 使用自定义背景图片
-                background_image = custom_background_path
-            else:
-                # 生成默认背景图片
-                background_image = VideoService._generate_background_image(
-                    safe_project_name,
-                    config,
-                    temp_image_dir
-                )
+            background_image = VideoService._generate_background_image(
+                project.name,
+                config,
+                temp_image_dir
+            )
             
             # 生成视频片段
             video_clips = []
@@ -96,20 +85,13 @@ class VideoService:
                     raise
             
             # 合并视频并按时长分片
-            # 安全的输出路径（如为空，使用默认输出目录下的项目子目录）
-            safe_output_path = project.output_path or os.path.join(
-                DefaultConfig.OUTPUT_DIR,
-                FileHandler.safe_filename(safe_project_name)
-            )
-            FileHandler.ensure_dir(safe_output_path)
-
             VideoService._merge_and_split_videos(
                 project_id,
                 video_clips,
                 config,
                 temp_video_dir,
-                safe_output_path,
-                safe_project_name,
+                project.output_path,
+                project.name,
                 task_id
             )
             
@@ -127,7 +109,8 @@ class VideoService:
             logger.error(f'视频生成失败: {str(e)}', exc_info=True)
             if task_id:
                 Task.update_status(task_id, Task.STATUS_FAILED, str(e))
-            Project.update_status(project_id, Project.STATUS_FAILED)
+            if project:
+                Project.update_status(project_id, Project.STATUS_FAILED)
             return False, str(e)
     
     @staticmethod
@@ -143,28 +126,15 @@ class VideoService:
         Returns:
             背景图片路径
         """
-        # 解析分辨率，兼容字符串和元组/列表
         resolution = config.get('resolution', DefaultConfig.DEFAULT_RESOLUTION)
-        if isinstance(resolution, str) and 'x' in resolution:
-            try:
-                w, h = resolution.lower().split('x')
-                width, height = int(w), int(h)
-            except Exception:
-                width, height = DefaultConfig.DEFAULT_RESOLUTION
-        elif isinstance(resolution, (list, tuple)) and len(resolution) == 2:
-            width, height = int(resolution[0]), int(resolution[1])
-        else:
-            width, height = DefaultConfig.DEFAULT_RESOLUTION
+        width, height = resolution
         
-        # 创建背景图片（不直接传入 color，避免类型检查冲突）
-        image = Image.new('RGB', (width, height))
+        # 创建黑色背景
+        image = Image.new('RGB', (width, height), color=0)
         draw = ImageDraw.Draw(image)
-        # 填充为纯黑背景
-        draw.rectangle([(0, 0), (width, height)], fill=(0, 0, 0))
         
         # 使用默认字体
-        # 预先定义字体大小，避免未绑定变量的类型告警
-        font_size = max(12, int(height * 0.08))  # 字体大小为高度的8%
+        font_size = int(height * 0.08)  # 字体大小为高度的8%
         try:
             # 尝试使用系统中文字体
             font = ImageFont.truetype("msyh.ttc", font_size)  # 微软雅黑
@@ -206,10 +176,6 @@ class VideoService:
         Returns:
             视频片段对象
         """
-        # 防御性检查：音频文件必须存在且非空
-        if not audio_path or not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
-            raise FileNotFoundError('音频文件不存在或为空，无法创建视频片段')
-
         fps = config.get('fps', DefaultConfig.DEFAULT_FPS)
         
         # 加载音频
@@ -284,6 +250,9 @@ class VideoService:
                         end_time - start_time,
                         output_file
                     )
+                else:
+                    # 更新现有记录的状态为completed
+                    VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_COMPLETED)
                 
                 # 更新进度
                 progress = 50 + (i + 1) / num_segments * 50  # 后50%进度
@@ -306,13 +275,20 @@ class VideoService:
                 logger=None  # 禁用moviepy的日志输出
             )
             
-            # 保存到数据库
-            VideoSegment.create(
-                project_id,
-                i,
-                end_time - start_time,
-                output_file
-            )
+            # 检查数据库中是否已记录该片段
+            existing_segment = VideoSegment.get_by_project_and_index(project_id, i)
+            
+            if not existing_segment:
+                # 保存到数据库
+                VideoSegment.create(
+                    project_id,
+                    i,
+                    end_time - start_time,
+                    output_file
+                )
+            else:
+                # 更新现有记录的状态为completed
+                VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_COMPLETED)
             
             segment_clip.close()
             
