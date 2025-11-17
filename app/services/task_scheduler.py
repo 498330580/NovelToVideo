@@ -42,7 +42,10 @@ class TaskScheduler:
             TaskScheduler._app = app
         
         # 检查并重置系统重启后遗留的处理中项目
-        TaskScheduler._reset_stale_processing_projects()
+        try:
+            TaskScheduler._reset_stale_processing_projects()
+        except Exception as e:
+            logger.warning(f'重置处理中项目状态时出错(可能是数据库未初始化): {str(e)}')
         
         TaskScheduler._running = True
         TaskScheduler._scheduler_thread = threading.Thread(
@@ -215,7 +218,11 @@ class TaskScheduler:
     
     @staticmethod
     def _reset_stale_processing_projects():
-        """重置系统重启后遗留的处理中项目和运行中任务"""
+        """
+        重置系统重启后遗留的处理中项目
+        - 将状态为processing的项目重置为pending
+        - 将状态为running的任务重置为failed
+        """
         try:
             from app.models.project import Project
             from app.models.task import Task

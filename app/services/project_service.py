@@ -1,6 +1,7 @@
 """项目管理服务"""
 import os
 import json
+from moviepy.editor import AudioFileClip
 from app.models.project import Project
 from app.models.text_segment import TextSegment
 from app.models.task import Task
@@ -160,9 +161,38 @@ class ProjectService:
             total_words = sum((s.word_count or 0) for s in segments)
             
             # 视频统计信息
-            total_video_segments = len(video_segments)
             completed_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_COMPLETED)
-            pending_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_PENDING)
+            
+            # 计算预期的视频段落数量
+            expected_video_segments = 0
+            if project.config and isinstance(project.config, dict):
+                segment_duration = project.config.get('segment_duration', DefaultConfig.DEFAULT_SEGMENT_DURATION)
+                
+                # 计算总音频时长
+                total_audio_duration = 0
+                for segment in segments:
+                    if segment.audio_status == TextSegment.AUDIO_STATUS_COMPLETED and segment.audio_path:
+                        # 从音频文件获取时长
+                        try:
+                            audio_clip = AudioFileClip(segment.audio_path)
+                            total_audio_duration += audio_clip.duration
+                            audio_clip.close()
+                        except:
+                            # 如果无法获取音频时长，跳过该段落
+                            pass
+                
+                # 根据总音频时长和分段时长计算预期视频段落数
+                if segment_duration > 0:
+                    expected_video_segments = int(total_audio_duration / segment_duration) + (1 if total_audio_duration % segment_duration > 0 else 0)
+            
+            # 如果还没有视频段落，使用预期数量；否则使用实际数量
+            total_video_segments = max(expected_video_segments, len(video_segments))
+            
+            # 待处理视频段落 = 总视频段落数 - 已完成视频段落数
+            pending_video_segments = total_video_segments - completed_video_segments
+            
+            # 确保待处理视频段落不为负数
+            pending_video_segments = max(0, pending_video_segments)
             
             return {
                 'total_segments': total_segments,
@@ -179,7 +209,7 @@ class ProjectService:
         except Exception as e:
             logger.error(f'获取项目统计信息失败: {str(e)}', exc_info=True)
             return None
-
+    
     @staticmethod
     def _get_default_config():
         """
@@ -201,57 +231,3 @@ class ProjectService:
             'segment_mode': DefaultConfig.DEFAULT_SEGMENT_MODE,
             'max_words': DefaultConfig.DEFAULT_MAX_WORDS
         }
-
-    @staticmethod
-    def resegment_project(project_id, segment_mode=None, max_words=None):
-        """
-        重新分段项目文本
-        
-        - 以现有段落内容重建原始文本
-        - 删除旧段落并按新配置重新分段
-        - 项目重置为待处理状态
-        
-        Args:
-            project_id: 项目ID
-            segment_mode: 分段模式（chapter/word_count）
-            max_words: 单段最大字数
-        
-        Returns:
-            (成功标志, 错误信息)
-        """
-        try:
-            project = Project.get_by_id(project_id)
-            if not project:
-                return False, '项目不存在'
-
-            # 获取现有段落，如果没有段落则无法重构文本
-            segments = TextSegment.get_by_project(project_id)
-            if not segments:
-                return False, '项目暂无文本段落，无法重新分段'
-
-            # 重建原始文本（按换行连接，保持自然段落分隔）
-            # 过滤掉空内容，避免 join 报错
-            text_content = '\n'.join([s.content for s in segments if s.content])
-
-            # 删除旧段落
-            TextSegment.delete_by_project(project_id)
-
-            # 构造新配置（以项目配置为基础）
-            config = project.config if isinstance(project.config, dict) else {}
-            if segment_mode:
-                config['segment_mode'] = segment_mode
-            if max_words:
-                config['max_words'] = max_words
-
-            # 创建文本导入任务并重新分段
-            task_id = Task.create(project_id, Task.TYPE_TEXT_IMPORT)
-
-            from app.services.text_processor import TextProcessor
-            ok, err = TextProcessor.process_text(project_id, text_content, config, task_id)
-            if not ok:
-                return False, err or '文本重新分段失败'
-
-            return True, None
-        except Exception as e:
-            logger.error(f'重新分段失败: {str(e)}', exc_info=True)
-            return False, f'重新分段失败: {str(e)}'

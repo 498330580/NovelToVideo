@@ -1,6 +1,7 @@
 """语音合成服务"""
 import os
 import asyncio
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from app.models.text_segment import TextSegment
 from app.models.task import Task
@@ -38,7 +39,7 @@ class TTSService:
             # 更新项目状态
             Project.update_status(project_id, Project.STATUS_PROCESSING)
             
-            # 获取项目配置（容错：项目/配置可能为 None）
+            # 获取项目配置
             project = Project.get_by_id(project_id)
             if not project:
                 error_msg = '项目不存在，无法进行语音合成'
@@ -135,15 +136,26 @@ class TTSService:
         
         while retry_count < max_retries:
             try:
-                # 使用异步方式调用 edge-tts
-                asyncio.run(TTSService._async_synthesize(
-                    safe_text,
-                    voice,
-                    rate,
-                    pitch,
-                    volume,
-                    audio_path
-                ))
+                # 使用异步方式调用 edge-tts，使用新的事件循环避免"Event loop is closed"错误
+                if sys.platform == 'win32':
+                    # 在Windows上使用ProactorEventLoop
+                    loop = asyncio.ProactorEventLoop()
+                else:
+                    # 在其他平台上使用默认事件循环
+                    loop = asyncio.new_event_loop()
+                
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(TTSService._async_synthesize(
+                        safe_text,
+                        voice,
+                        rate,
+                        pitch,
+                        volume,
+                        audio_path
+                    ))
+                finally:
+                    loop.close()
                 
                 # 验证文件是否生成
                 if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
@@ -183,7 +195,6 @@ class TTSService:
         try:
             import edge_tts
             
-            # 创建通讯对象
             communicate = edge_tts.Communicate(
                 text,
                 voice,
@@ -192,12 +203,10 @@ class TTSService:
                 volume=volume
             )
             
-            # 尝试保存音频文件
             await communicate.save(output_path)
             
         except Exception as e:
-            # 记录详细的错误信息
-            logger.error(f'Edge TTS 调用失败: {str(e)}')
+            logger.error(f'Edge TTS 调用失败: {str(e)}', exc_info=True)
             
             # 如果是网络相关错误，提供更详细的错误信息
             error_msg = str(e).lower()

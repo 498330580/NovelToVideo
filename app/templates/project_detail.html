@@ -227,13 +227,15 @@
 <script>
 // 设置进度条宽度，避免在 style 中直接插入模板表达式造成 CSS 校验器报错
 document.addEventListener('DOMContentLoaded', function() {
-    var fill = document.querySelector('.progress-fill');
-    if (fill && fill.dataset && fill.dataset.width) {
-        var w = parseInt(fill.dataset.width, 10);
-        if (!isNaN(w) && w >= 0 && w <= 100) {
-            fill.style.width = w + '%';
+    var fills = document.querySelectorAll('.progress-fill');
+    fills.forEach(function(fill) {
+        if (fill && fill.dataset && fill.dataset.width) {
+            var w = parseInt(fill.dataset.width, 10);
+            if (!isNaN(w) && w >= 0 && w <= 100) {
+                fill.style.width = w + '%';
+            }
         }
-    }
+    });
     
     // 自动刷新页面以更新进度(仅在处理中时)
     const projectStatus = '{{ project.status }}';
