@@ -185,8 +185,9 @@ class ProjectService:
                 if segment_duration > 0:
                     expected_video_segments = int(total_audio_duration / segment_duration) + (1 if total_audio_duration % segment_duration > 0 else 0)
             
-            # 如果还没有视频段落，使用预期数量；否则使用实际数量
-            total_video_segments = max(expected_video_segments, len(video_segments))
+            # 使用实际的视频段落数量，而不是预期数量和实际数量的最大值
+            # 这样可以避免因为预期计算不准确导致的统计偏差
+            total_video_segments = len(video_segments)
             
             # 待处理视频段落 = 总视频段落数 - 已完成视频段落数
             pending_video_segments = total_video_segments - completed_video_segments
