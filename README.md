@@ -34,7 +34,31 @@
 - 至少 2GB 可用内存
 - 至少 10GB 可用磁盘空间
 
-### 安装步骤
+### Docker部署（推荐）
+
+1. **确保已安装Docker**
+
+2. **构建并启动容器**
+
+```bash
+# 克隆或下载项目
+cd 小说转视频
+
+# 使用docker-compose启动服务
+docker-compose up -d
+```
+
+3. **访问Web界面**
+
+打开浏览器访问: http://localhost:5000
+
+4. **停止服务**
+
+```bash
+docker-compose down
+```
+
+### 传统安装方式
 
 1. **克隆或下载项目**
 
