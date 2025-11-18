@@ -149,16 +149,24 @@
                 <div class="form-group">
                     <label for="segment_mode">分段模式</label>
                     <select id="segment_mode" name="segment_mode">
-                        <option value="word_count" selected>按字数分段</option>
+                        <option value="edge_tts" selected>按Edge-TTS字节限制分段</option>
                         <option value="chapter">按章节分段</option>
                     </select>
                 </div>
-                
-                <div class="form-group">
-                    <label for="max_words">最大字数</label>
-                    <input type="number" id="max_words" name="max_words" value="10000" min="5000" max="20000">
-                    <small class="form-help">5000-20000字</small>
-                </div>
+            </div>
+            
+            <div class="form-group" id="max_words_group" style="display: none;">
+                <label for="max_words">最大字数</label>
+                <input type="number" id="max_words" name="max_words" value="10000" min="5000" max="20000">
+                <small class="form-help">5000-20000字</small>
+            </div>
+            
+            <div class="alert alert-info">
+                <p><strong>分段说明：</strong></p>
+                <ul>
+                    <li><strong>Edge-TTS字节限制分段：</strong>根据Edge-TTS服务的4096字节限制自动分段，确保语音合成稳定性</li>
+                    <li><strong>按章节分段：</strong>按小说章节自动分段，章节过长时会进一步按字数分段</li>
+                </ul>
             </div>
         </div>
 
@@ -332,7 +340,7 @@ function detectEncodingFromBuffer(arrayBuffer) {
     }
     
     // 如果検测到较多的GBK粗佋，使用GBK
-if (gbkLikelyCount > 5) {
+    if (gbkLikelyCount > 5) {
         return 'gbk';
     }
     
@@ -399,6 +407,16 @@ document.querySelectorAll('input[name="background_option"]').forEach(radio => {
             document.getElementById('background_status').style.display = 'none';
         }
     });
+});
+
+// 分段模式切换
+document.getElementById('segment_mode').addEventListener('change', function() {
+    const maxWordsGroup = document.getElementById('max_words_group');
+    if (this.value === 'chapter') {
+        maxWordsGroup.style.display = 'block';
+    } else {
+        maxWordsGroup.style.display = 'none';
+    }
 });
 
 // 背景图片文件验证

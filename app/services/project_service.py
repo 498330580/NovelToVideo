@@ -233,3 +233,64 @@ class ProjectService:
             'segment_mode': DefaultConfig.DEFAULT_SEGMENT_MODE,
             'max_words': DefaultConfig.DEFAULT_MAX_WORDS
         }
+
+    @staticmethod
+    def resegment_project(project_id, segment_mode, max_words):
+        """
+        重新分段项目文本
+        
+        Args:
+            project_id: 项目ID
+            segment_mode: 分段模式
+            max_words: 最大字数
+            
+        Returns:
+            (成功标志, 错误信息)
+        """
+        try:
+            # 获取项目
+            project = Project.get_by_id(project_id)
+            if not project:
+                return False, '项目不存在'
+            
+            # 更新项目配置
+            config = project.config if isinstance(project.config, dict) else {}
+            config['segment_mode'] = segment_mode
+            config['max_words'] = max_words
+            project.config = config
+            
+            # 更新数据库中的配置
+            query = 'UPDATE projects SET config_json = ? WHERE id = ?'
+            execute_query(query, (project.config_json, project_id), fetch=False)
+            
+            # 获取所有段落并重构原始文本
+            segments = TextSegment.get_by_project(project_id)
+            if not segments:
+                return False, '项目中没有文本段落'
+            
+            # 按索引排序段落
+            segments.sort(key=lambda x: x.segment_index)
+            
+            # 重构原始文本
+            original_text = '\n\n'.join([segment.content for segment in segments])
+            
+            # 删除现有的段落
+            TextSegment.delete_by_project(project_id)
+            
+            # 创建文本导入任务
+            task_id = Task.create(project_id, Task.TYPE_TEXT_IMPORT)
+            
+            # 使用文本处理器重新分段
+            from app.services.text_processor import TextProcessor
+            success, error = TextProcessor.process_text(project_id, original_text, config, task_id)
+            
+            if success:
+                # 重置项目状态为待处理
+                Project.update_status(project_id, Project.STATUS_PENDING)
+                return True, None
+            else:
+                return False, error
+                
+        except Exception as e:
+            logger.error(f'重新分段项目失败: {str(e)}', exc_info=True)
+            return False, f'重新分段失败: {str(e)}'

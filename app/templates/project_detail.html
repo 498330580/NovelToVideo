@@ -200,8 +200,8 @@
         <div class="resegment-box" style="margin-top:12px;">
             <label>重新分段（可选）:</label>
             <select id="segmentMode" class="form-control">
-                <option value="word_count" {% if cfg.get('segment_mode') == 'word_count' %}selected="selected"{% endif %}>按字数</option>
-                <option value="chapter" {% if cfg.get('segment_mode') == 'chapter' %}selected="selected"{% endif %}>按章节</option>
+                <option value="edge_tts" {% if cfg.get('segment_mode') == 'edge_tts' or cfg.get('segment_mode') == 'word_count' %}selected="selected"{% endif %}>按Edge-TTS字节限制分段</option>
+                <option value="chapter" {% if cfg.get('segment_mode') == 'chapter' %}selected="selected"{% endif %}>按章节分段</option>
             </select>
             <input id="maxWords" type="number" class="form-control input-small" min="100" max="50000" step="100" value="{{ cfg.get('max_words', 10000) }}" />
             <button id="btnResegment" class="btn btn-warning">执行</button>
@@ -248,6 +248,17 @@ document.addEventListener('DOMContentLoaded', function() {
             location.reload();
         }, 5000); // 每5秒刷新一次
     }
+    
+    // 初始化重新分段控件
+    const segmentModeEl = document.getElementById('segmentMode');
+    const maxWordsEl = document.getElementById('maxWords');
+    if (segmentModeEl && maxWordsEl) {
+        if (segmentModeEl.value === 'chapter') {
+            maxWordsEl.style.display = 'inline-block';
+        } else {
+            maxWordsEl.style.display = 'none';
+        }
+    }
 });
 
 // 操作按钮事件绑定
@@ -287,11 +298,21 @@ if (btnGenerateVideo) btnGenerateVideo.addEventListener('click', async function(
     }
 });
 
+// 分段模式切换
+document.getElementById('segmentMode').addEventListener('change', function() {
+    const maxWordsInput = document.getElementById('maxWords');
+    if (this.value === 'chapter') {
+        maxWordsInput.style.display = 'inline-block';
+    } else {
+        maxWordsInput.style.display = 'none';
+    }
+});
+
 var btnResegment = document.getElementById('btnResegment');
 if (btnResegment) btnResegment.addEventListener('click', async function() {
     var segmentModeEl = document.getElementById('segmentMode');
     var maxWordsEl = document.getElementById('maxWords');
-    const mode = segmentModeEl ? segmentModeEl.value : 'word_count';
+    const mode = segmentModeEl ? segmentModeEl.value : 'edge_tts';
     const maxWords = parseInt(maxWordsEl ? maxWordsEl.value : '10000', 10);
     try {
         const res = await fetch(`{{ url_for('project.resegment', project_id=project.id) }}`, {

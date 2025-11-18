@@ -39,7 +39,7 @@ class DefaultConfig:
     DEFAULT_SEGMENT_DURATION = 600  # 秒
     
     # 分段参数默认值
-    DEFAULT_SEGMENT_MODE = 'word_count'  # chapter 或 word_count
+    DEFAULT_SEGMENT_MODE = 'edge_tts'  # edge_tts 或 chapter
     DEFAULT_MAX_WORDS = 10000
     
     # 任务处理配置
