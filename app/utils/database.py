@@ -39,10 +39,35 @@ def init_db():
     
     db = get_db()
     
+    # 检查是否已初始化（通过检查初始化标记表）
+    try:
+        cursor = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_init_marker'")
+        if cursor.fetchone():
+            # 检查标记是否存在
+            cursor = db.execute("SELECT COUNT(*) as count FROM db_init_marker")
+            result = cursor.fetchone()
+            if result and result['count'] > 0:
+                print('数据库已初始化，跳过初始化步骤')
+                return
+    except:
+        # 如果检查失败，继续执行初始化
+        pass
+    
     # 读取并执行SQL初始化脚本
     sql_path = Path(__file__).parent.parent.parent / 'migrations' / 'init_db.sql'
     with open(sql_path, 'r', encoding='utf-8') as f:
         db.executescript(f.read())
+    
+    # 创建初始化标记表并插入标记
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS db_init_marker (
+            id INTEGER PRIMARY KEY,
+            initialized_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # 插入初始化标记
+    db.execute("INSERT OR REPLACE INTO db_init_marker (id) VALUES (1)")
     
     db.commit()
     print('数据库初始化成功!')
