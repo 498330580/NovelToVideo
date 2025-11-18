@@ -1,5 +1,6 @@
 """应用入口文件"""
 import sys
+import os
 from pathlib import Path
 
 # 添加项目根目录到Python路径
@@ -9,15 +10,25 @@ sys.path.insert(0, str(project_root))
 from app import create_app
 from app.utils.database import init_db
 from app.utils.logger import get_logger
-from config import DevelopmentConfig
+from config import DevelopmentConfig, ProductionConfig
 
 logger = get_logger(__name__)
 
 
 def main():
     """主函数"""
+    # 根据环境变量选择配置
+    flask_env = os.environ.get('FLASK_ENV', 'development').lower()
+    
+    if flask_env == 'production':
+        config = ProductionConfig
+        logger.info('使用生产环境配置')
+    else:
+        config = DevelopmentConfig
+        logger.info('使用开发环境配置')
+    
     # 创建Flask应用
-    app = create_app(DevelopmentConfig)
+    app = create_app(config)
     
     # 初始化数据库
     with app.app_context():
@@ -34,7 +45,7 @@ def main():
     app.run(
         host='0.0.0.0',
         port=5000,
-        debug=DevelopmentConfig.DEBUG
+        debug=config.DEBUG
     )
 
 
