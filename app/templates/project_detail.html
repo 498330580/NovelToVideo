@@ -276,7 +276,8 @@ if (btnGenerateVideo) btnGenerateVideo.addEventListener('click', async function(
         const data = await res.json();
         if (data.success) {
             alert(data.message || '已提交视频生成任务');
-            location.reload();
+            // 添加自动刷新机制，以便在视频生成过程中更新进度
+            startAutoRefresh();
         } else {
             alert(data.error || '提交失败');
         }
@@ -347,5 +348,44 @@ if (btnStartProcessing) btnStartProcessing.addEventListener('click', async funct
         btnStartProcessing.textContent = '开始处理';
     }
 });
+
+// 自动刷新函数
+function startAutoRefresh() {
+    // 每3秒刷新一次页面，持续1分钟
+    let refreshCount = 0;
+    const maxRefreshes = 20; // 1分钟内最多刷新20次
+    
+    const refreshInterval = setInterval(function() {
+        refreshCount++;
+        if (refreshCount >= maxRefreshes) {
+            clearInterval(refreshInterval);
+            return;
+        }
+        
+        // 发送一个简单的请求来检查任务状态
+        fetch(`{{ url_for('project.stats', project_id=project.id) }}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 检查是否有运行中的视频生成任务
+                    const videoTasks = data.data.tasks.filter(task => 
+                        task.task_type === 'video_generation' && task.status === 'running'
+                    );
+                    
+                    if (videoTasks.length > 0) {
+                        // 如果有运行中的视频生成任务，刷新页面
+                        location.reload();
+                    } else {
+                        // 如果没有运行中的视频生成任务，停止刷新
+                        clearInterval(refreshInterval);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('检查任务状态失败:', error);
+                clearInterval(refreshInterval);
+            });
+    }, 3000); // 每3秒检查一次
+}
 </script>
 {% endblock %}

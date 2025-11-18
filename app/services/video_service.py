@@ -287,12 +287,12 @@ class VideoService:
             output_filename = f'{safe_name}_{i+1}.{video_format}'
             output_file = os.path.join(output_path, output_filename)
             
+            # 检查数据库中是否已记录该片段
+            existing_segment = VideoSegment.get_by_project_and_index(project_id, i)
+            
             # 如果文件已存在且大小大于0，则跳过
             if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
                 logger.info(f'视频片段已存在，跳过: {output_filename}')
-                
-                # 检查数据库中是否已记录该片段
-                existing_segment = VideoSegment.get_by_project_and_index(project_id, i)
                 
                 if not existing_segment:
                     # 保存到数据库
@@ -307,13 +307,18 @@ class VideoService:
                 else:
                     # 更新现有记录的状态为completed
                     VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_COMPLETED)
-
                 
                 # 更新进度
                 progress = 50 + (i + 1) / num_segments * 50  # 后50%进度
                 Task.update_progress(task_id, progress)
                 
                 continue
+            
+            # 如果文件不存在或大小为0，但数据库中有记录，需要更新数据库状态
+            if existing_segment and (not os.path.exists(output_file) or os.path.getsize(output_file) == 0):
+                # 将数据库中的记录状态更新为pending，表示需要重新处理
+                VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_PENDING)
+                logger.info(f'视频文件不存在，更新数据库状态为待处理: 索引 {i}')
             
             # 截取片段
             segment_clip = full_video.subclip(start_time, end_time)
