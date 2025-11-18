@@ -33,15 +33,8 @@ class TextProcessor:
             if task_id:
                 Task.update_status(task_id, Task.STATUS_RUNNING)
             
-            segment_mode = config.get('segment_mode', DefaultConfig.DEFAULT_SEGMENT_MODE)
-            max_words = config.get('max_words', DefaultConfig.DEFAULT_MAX_WORDS)
-            
-            # 根据分段模式处理文本
-            if segment_mode == 'chapter':
-                segments = TextProcessor._segment_by_chapter(text_content, max_words)
-            else:
-                # 使用edge-tts字节限制进行分段
-                segments = TextProcessor._segment_by_edge_tts_limit(text_content)
+            # 直接使用edge-tts字节限制进行分段，移除章节分段模式
+            segments = TextProcessor._segment_by_edge_tts_limit(text_content)
             
             # 批量插入段落
             segments_data = [
@@ -67,84 +60,7 @@ class TextProcessor:
             if task_id:
                 Task.update_status(task_id, Task.STATUS_FAILED, str(e))
             return False, str(e)
-    
-    @staticmethod
-    def _segment_by_chapter(text_content, max_words):
-        """
-        按章节分段
-        
-        Args:
-            text_content: 文本内容
-            max_words: 单段最大字数
-            
-        Returns:
-            段落列表
-        """
-        segments = []
-        
-        # 尝试识别章节
-        chapter_pattern = '|'.join(DefaultConfig.CHAPTER_PATTERNS)
-        lines = text_content.split('\n')
-        
-        current_chapter = None
-        current_content = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            
-            # 检查是否为章节标题
-            is_chapter = False
-            for pattern in DefaultConfig.CHAPTER_PATTERNS:
-                if re.match(pattern, line):
-                    is_chapter = True
-                    break
-            
-            if is_chapter:
-                # 保存上一章节
-                if current_content:
-                    content = '\n'.join(current_content)
-                    # 如果章节过长,需要二次分段
-                    if len(content) > max_words:
-                        sub_segments = TextProcessor._segment_by_edge_tts_limit(content)
-                        for sub_seg in sub_segments:
-                            sub_seg['chapter_title'] = current_chapter
-                            segments.append(sub_seg)
-                    else:
-                        segments.append({
-                            'content': content,
-                            'word_count': len(content),
-                            'chapter_title': current_chapter
-                        })
-                
-                # 开始新章节
-                current_chapter = line
-                current_content = []
-            else:
-                current_content.append(line)
-        
-        # 保存最后一章
-        if current_content:
-            content = '\n'.join(current_content)
-            if len(content) > max_words:
-                sub_segments = TextProcessor._segment_by_edge_tts_limit(content)
-                for sub_seg in sub_segments:
-                    sub_seg['chapter_title'] = current_chapter
-                    segments.append(sub_seg)
-            else:
-                segments.append({
-                    'content': content,
-                    'word_count': len(content),
-                    'chapter_title': current_chapter
-                })
-        
-        # 如果没有识别到章节,则按edge-tts限制分段
-        if not segments:
-            return TextProcessor._segment_by_edge_tts_limit(text_content)
-        
-        return segments
-    
+
     @staticmethod
     def _segment_by_edge_tts_limit(text_content):
         """

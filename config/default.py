@@ -39,7 +39,7 @@ class DefaultConfig:
     DEFAULT_SEGMENT_DURATION = 600  # 秒
     
     # 分段参数默认值
-    DEFAULT_SEGMENT_MODE = 'edge_tts'  # edge_tts 或 chapter
+    DEFAULT_SEGMENT_MODE = 'edge_tts'  # 仅支持 edge_tts
     DEFAULT_MAX_WORDS = 10000
     
     # 任务处理配置
@@ -57,10 +57,4 @@ class DefaultConfig:
     LOG_MAX_BYTES = 10 * 1024 * 1024  # 单个日志文件最大10MB
     LOG_BACKUP_COUNT = 5  # 保留5个备份
     
-    # 章节识别正则表达式
-    CHAPTER_PATTERNS = [
-        r'^第[零一二三四五六七八九十百千万\d]+章',
-        r'^Chapter\s+\d+',
-        r'^第\d+章',
-        r'^\d+\.',
-    ]
+    # 移除章节识别正则表达式，不再需要章节分段功能

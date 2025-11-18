@@ -200,10 +200,8 @@
         <div class="resegment-box" style="margin-top:12px;">
             <label>重新分段（可选）:</label>
             <select id="segmentMode" class="form-control">
-                <option value="edge_tts" {% if cfg.get('segment_mode') == 'edge_tts' or cfg.get('segment_mode') == 'word_count' %}selected="selected"{% endif %}>按Edge-TTS字节限制分段</option>
-                <option value="chapter" {% if cfg.get('segment_mode') == 'chapter' %}selected="selected"{% endif %}>按章节分段</option>
+                <option value="edge_tts" selected>按Edge-TTS字节限制分段</option>
             </select>
-            <input id="maxWords" type="number" class="form-control input-small" min="100" max="50000" step="100" value="{{ cfg.get('max_words', 10000) }}" />
             <button id="btnResegment" class="btn btn-warning">执行</button>
         </div>
         <p class="hint" style="margin-top:8px;color:#888;">提示：生成视频需等待所有语音段落合成完成（音频进度100%）。</p>
@@ -247,17 +245,6 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(function() {
             location.reload();
         }, 5000); // 每5秒刷新一次
-    }
-    
-    // 初始化重新分段控件
-    const segmentModeEl = document.getElementById('segmentMode');
-    const maxWordsEl = document.getElementById('maxWords');
-    if (segmentModeEl && maxWordsEl) {
-        if (segmentModeEl.value === 'chapter') {
-            maxWordsEl.style.display = 'inline-block';
-        } else {
-            maxWordsEl.style.display = 'none';
-        }
     }
 });
 
@@ -310,15 +297,11 @@ document.getElementById('segmentMode').addEventListener('change', function() {
 
 var btnResegment = document.getElementById('btnResegment');
 if (btnResegment) btnResegment.addEventListener('click', async function() {
-    var segmentModeEl = document.getElementById('segmentMode');
-    var maxWordsEl = document.getElementById('maxWords');
-    const mode = segmentModeEl ? segmentModeEl.value : 'edge_tts';
-    const maxWords = parseInt(maxWordsEl ? maxWordsEl.value : '10000', 10);
     try {
         const res = await fetch(`{{ url_for('project.resegment', project_id=project.id) }}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ segment_mode: mode, max_words: maxWords })
+            body: JSON.stringify({ segment_mode: 'edge_tts' })
         });
         const data = await res.json();
         if (data.success) {
