@@ -192,9 +192,12 @@ class TTSService:
                 volume=volume
             )
             
-            # 尝试保存音频文件
-            await communicate.save(output_path)
+            # 尝试保存音频文件，设置超时时间为30秒
+            await asyncio.wait_for(communicate.save(output_path), timeout=30.0)
             
+        except asyncio.TimeoutError:
+            logger.error('Edge TTS 调用超时')
+            raise Exception('语音合成超时，请检查网络连接')
         except Exception as e:
             # 记录详细的错误信息
             logger.error(f'Edge TTS 调用失败: {str(e)}')
