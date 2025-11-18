@@ -89,8 +89,8 @@
         <h3>视频合成统计信息</h3>
         <div class="stats-grid">
             <div class="stat-item">
-                <div class="stat-value">{{ stats.total_video_segments }}</div>
-                <div class="stat-label">视频段落数</div>
+                <div class="stat-value">{{ stats.expected_video_segments }}</div>
+                <div class="stat-label">总视频段落数</div>
             </div>
             <div class="stat-item">
                 <div class="stat-value">{{ stats.completed_video_segments }}</div>
@@ -102,11 +102,11 @@
             </div>
         </div>
         
-        {% if stats.total_video_segments > 0 %}
+        {% if stats.expected_video_segments > 0 %}
         <div class="progress-bar">
-            <div class="progress-fill" style="width: 0%" data-width="{{ (stats.completed_video_segments / stats.total_video_segments * 100) | int }}"></div>
+            <div class="progress-fill" style="width: 0%" data-width="{{ (stats.completed_video_segments / stats.expected_video_segments * 100) | int }}"></div>
         </div>
-        <p class="progress-text">视频完成进度: {{ (stats.completed_video_segments / stats.total_video_segments * 100) | int }}%</p>
+        <p class="progress-text">视频完成进度: {{ (stats.completed_video_segments / stats.expected_video_segments * 100) | int }}%</p>
         {% elif stats.completed_segments > 0 %}
         <p class="progress-text">提示: 视频合成将在音频合成完成后开始</p>
         {% endif %}
