@@ -221,6 +221,9 @@ class VideoService:
         
         logger.info(f'视频总时长: {total_duration}秒, 分片数: {num_segments}')
         
+        # 确保输出目录存在
+        FileHandler.ensure_dir(output_path)
+        
         # 分片导出
         safe_name = FileHandler.safe_filename(project_name)
         
