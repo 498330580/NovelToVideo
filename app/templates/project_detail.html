@@ -187,7 +187,7 @@
                 <div class="step-title">步骤二：生成视频</div>
                 <p class="step-desc">使用已完成的音频生成视频。</p>
                 <div class="step-actions">
-                    <button id="btnGenerateVideo" class="btn btn-success" {% if stats and stats.completed_segments == 0 %}disabled{% endif %}>
+                    <button id="btnGenerateVideo" class="btn btn-success" {% if stats and (stats.completed_segments < stats.total_segments or stats.total_segments == 0) %}disabled{% endif %}>
                         生成视频
                     </button>
                 </div>
@@ -202,7 +202,7 @@
             <input id="maxWords" type="number" class="form-control input-small" min="100" max="50000" step="100" value="{{ cfg.get('max_words', 10000) }}" />
             <button id="btnResegment" class="btn btn-warning">执行</button>
         </div>
-        <p class="hint" style="margin-top:8px;color:#888;">提示：生成视频需至少有一个已完成的语音段落。</p>
+        <p class="hint" style="margin-top:8px;color:#888;">提示：生成视频需等待所有语音段落合成完成（音频进度100%）。</p>
     </div>
     
     <div class="info-card">

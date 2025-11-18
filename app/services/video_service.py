@@ -43,8 +43,26 @@ class VideoService:
                 
             config = project.config
             
-            # 获取已完成的音频段落
-            segments = TextSegment.get_completed_segments(project_id)
+            # 获取所有音频段落
+            all_segments = TextSegment.get_by_project(project_id)
+            completed_segments = TextSegment.get_completed_segments(project_id)
+            
+            # 检查音频合成进度是否达到100%
+            if len(all_segments) == 0:
+                error_msg = '没有音频段落'
+                Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                return False, error_msg
+            
+            # 计算音频完成进度
+            audio_progress = len(completed_segments) / len(all_segments) * 100
+            
+            # 只有当音频合成进度达到100%时才允许开始视频合成
+            if audio_progress < 100:
+                error_msg = f'音频合成进度未达到100% ({audio_progress:.1f}%)，无法开始视频合成'
+                Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                return False, error_msg
+            
+            segments = completed_segments
             if not segments:
                 error_msg = '没有已完成的音频段落'
                 Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
