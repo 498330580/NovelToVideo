@@ -144,6 +144,37 @@ class VideoService:
         Returns:
             背景图片路径
         """
+        # 检查是否使用自定义背景图片
+        background_option = config.get('background_option', 'default')
+        custom_background_path = config.get('custom_background_path')
+        
+        if background_option == 'custom' and custom_background_path and os.path.exists(custom_background_path):
+            # 使用自定义背景图片
+            logger.info(f'使用自定义背景图片: {custom_background_path}')
+            
+            # 获取目标分辨率
+            resolution = config.get('resolution', DefaultConfig.DEFAULT_RESOLUTION)
+            width, height = resolution
+            
+            # 调整自定义图片大小以匹配目标分辨率
+            try:
+                from PIL import Image
+                custom_image = Image.open(custom_background_path)
+                # 调整图片大小以适应目标分辨率（保持宽高比）
+                custom_image = custom_image.resize((width, height), Image.Resampling.LANCZOS)
+                
+                # 保存调整后的图片到临时目录
+                adjusted_image_path = os.path.join(temp_image_dir, 'custom_background.png')
+                custom_image.save(adjusted_image_path)
+                custom_image.close()
+                
+                logger.info(f'自定义背景图片调整完成: {adjusted_image_path}')
+                return adjusted_image_path
+            except Exception as e:
+                logger.error(f'处理自定义背景图片失败: {e}')
+                # 如果处理失败，继续使用默认背景生成
+        
+        # 使用默认背景生成（原有的逻辑）
         resolution = config.get('resolution', DefaultConfig.DEFAULT_RESOLUTION)
         width, height = resolution
         
