@@ -124,6 +124,16 @@ class ProjectService:
             if os.path.exists(temp_video_path):
                 FileHandler.delete_directory(temp_video_path)
             
+            # 删除项目相关的自定义背景图片
+            if project.config and isinstance(project.config, dict):
+                custom_background_path = project.config.get('custom_background_path')
+                if custom_background_path and os.path.exists(custom_background_path):
+                    try:
+                        os.remove(custom_background_path)
+                        logger.info(f'删除自定义背景图片: {custom_background_path}')
+                    except Exception as e:
+                        logger.warning(f'删除自定义背景图片失败: {custom_background_path}, 错误: {str(e)}')
+            
             # 删除数据库记录(会级联删除相关的段落、视频片段和任务)
             Project.delete(project_id)
             
