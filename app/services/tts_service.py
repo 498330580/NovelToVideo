@@ -135,8 +135,11 @@ class TTSService:
             TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_FAILED)
             raise Exception('文本内容为空，无法合成语音')
         
-        # 根据文本长度计算超时时间（每1000个字符增加10秒超时，最少30秒）
-        timeout_seconds = max(30.0, len(safe_text) / 1000 * 10.0)
+        # 根据分段后的文本长度计算超时时间（每1000个字符增加300秒超时，最少300秒）
+        # 考虑到edge-tts的分段已经是按照4096字节限制处理过的，这里使用更合理的超时计算
+        text_length = len(safe_text)
+        timeout_seconds = max(300.0, text_length / 1000 * 300.0)
+        logger.info(f'开始合成语音: segment_id={segment.id}, 超时时间={timeout_seconds}秒')
 
         # 调用 Edge TTS 合成语音
         retry_count = 0
@@ -164,7 +167,8 @@ class TTSService:
                     rate,
                     pitch,
                     volume,
-                    audio_path
+                    audio_path,
+                    timeout_seconds  # 传递计算好的超时时间
                 ))
                 
                 # 验证文件是否生成
@@ -190,7 +194,7 @@ class TTSService:
                     raise Exception(f'语音合成失败,已重试{max_retries}次: {str(e)}')
     
     @staticmethod
-    async def _async_synthesize(text, voice, rate, pitch, volume, output_path):
+    async def _async_synthesize(text, voice, rate, pitch, volume, output_path, timeout_seconds=None):
         """
         异步合成语音
         
@@ -201,6 +205,7 @@ class TTSService:
             pitch: 音调
             volume: 音量
             output_path: 输出路径
+            timeout_seconds: 超时时间（秒），如果为None则使用默认计算
         """
         try:
             import edge_tts
@@ -214,8 +219,11 @@ class TTSService:
                 volume=volume
             )
             
-            # 根据文本长度计算超时时间（每1000个字符增加20秒超时，最少60秒）
-            timeout_seconds = max(60.0, len(text) / 1000 * 20.0)
+            # 如果没有传递超时时间，则根据文本长度计算超时时间（每1000个字符增加300秒超时，最少300秒）
+            # 这里使用更宽松的超时设置，因为异步操作可能需要更多时间
+            if timeout_seconds is None:
+                text_length = len(text)
+                timeout_seconds = max(300.0, text_length / 1000 * 300.0)
             
             # 尝试保存音频文件，设置动态超时时间
             await asyncio.wait_for(communicate.save(output_path), timeout=timeout_seconds)
