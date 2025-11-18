@@ -75,10 +75,16 @@ class TTSService:
                 except Exception as e:
                     logger.error(f'段落语音合成失败: segment_id={segment.id}, error={str(e)}')
                     failed_count += 1
-                
-                # 更新进度
-                progress = (completed_count + failed_count) / total_segments * 100
-                Task.update_progress(task_id, progress)
+                    # 确保段落状态被更新为失败
+                    try:
+                        TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_FAILED)
+                    except Exception as status_error:
+                        logger.error(f'更新段落状态失败: segment_id={segment.id}, error={str(status_error)}')
+                finally:
+                    # 确保无论如何都更新进度
+                    # 更新进度
+                    progress = (completed_count + failed_count) / total_segments * 100
+                    Task.update_progress(task_id, progress)
             
             # 完成任务
             if failed_count == 0:
@@ -128,6 +134,9 @@ class TTSService:
         if not safe_text:
             TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_FAILED)
             raise Exception('文本内容为空，无法合成语音')
+        
+        # 根据文本长度计算超时时间（每1000个字符增加10秒超时，最少30秒）
+        timeout_seconds = max(30.0, len(safe_text) / 1000 * 10.0)
 
         # 调用 Edge TTS 合成语音
         retry_count = 0
@@ -136,7 +145,20 @@ class TTSService:
         while retry_count < max_retries:
             try:
                 # 使用异步方式调用 edge-tts
-                asyncio.run(TTSService._async_synthesize(
+                # 使用更安全的方式处理事件循环，避免Event loop closed错误
+                try:
+                    # 尝试获取当前事件循环
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        # 如果事件循环已关闭，创建新的事件循环
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                except RuntimeError:
+                    # 如果没有事件循环，创建新的事件循环
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                loop.run_until_complete(TTSService._async_synthesize(
                     safe_text,
                     voice,
                     rate,
@@ -192,8 +214,11 @@ class TTSService:
                 volume=volume
             )
             
-            # 尝试保存音频文件，设置超时时间为30秒
-            await asyncio.wait_for(communicate.save(output_path), timeout=30.0)
+            # 根据文本长度计算超时时间（每1000个字符增加20秒超时，最少60秒）
+            timeout_seconds = max(60.0, len(text) / 1000 * 20.0)
+            
+            # 尝试保存音频文件，设置动态超时时间
+            await asyncio.wait_for(communicate.save(output_path), timeout=timeout_seconds)
             
         except asyncio.TimeoutError:
             logger.error('Edge TTS 调用超时')

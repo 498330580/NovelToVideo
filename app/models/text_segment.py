@@ -188,6 +188,27 @@ class TextSegment:
         if not isinstance(rows, (list, tuple)):
             rows = []
         return [cls._from_row(row) for row in rows]
+    
+    @classmethod
+    def get_failed_segments(cls, project_id):
+        """
+        获取失败的段落
+        
+        Args:
+            project_id: 项目ID
+            
+        Returns:
+            TextSegment对象列表
+        """
+        query = '''
+            SELECT * FROM text_segments 
+            WHERE project_id = ? AND audio_status = ? 
+            ORDER BY segment_index
+        '''
+        rows = execute_query(query, (project_id, cls.AUDIO_STATUS_FAILED))
+        if not isinstance(rows, (list, tuple)):
+            rows = []
+        return [cls._from_row(row) for row in rows]
 
     @classmethod
     def reset_audio_status_by_project(cls, project_id, from_status, to_status):

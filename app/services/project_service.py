@@ -158,6 +158,7 @@ class ProjectService:
             total_segments = len(segments)
             completed_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_COMPLETED)
             pending_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_PENDING)
+            failed_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_FAILED)
             total_words = sum((s.word_count or 0) for s in segments)
             
             # 视频统计信息
@@ -198,6 +199,7 @@ class ProjectService:
                 'total_segments': total_segments,
                 'completed_segments': completed_segments,
                 'pending_segments': pending_segments,
+                'failed_segments': failed_segments,
                 'total_words': total_words,
                 'tasks': [t.to_dict() for t in tasks],
                 # 视频统计信息
