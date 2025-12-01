@@ -158,7 +158,6 @@ class VideoService:
             
             # 调整自定义图片大小以匹配目标分辨率
             try:
-                from PIL import Image
                 custom_image = Image.open(custom_background_path)
                 # 调整图片大小以适应目标分辨率（保持宽高比）
                 custom_image = custom_image.resize((width, height), Image.Resampling.LANCZOS)

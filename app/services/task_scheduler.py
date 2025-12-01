@@ -222,75 +222,43 @@ class TaskScheduler:
         重置系统重启后遗留的处理中项目
         - 将状态为processing的项目重置为pending
         - 将状态为running的任务重置为failed
+        
+        注意: 为了提高启动速度，此方法仅进行基本的状态重置，
+        不进行复杂的项目统计和状态同步操作
         """
         try:
             from app.models.project import Project
             from app.models.task import Task
-            from app.models.text_segment import TextSegment
-            from app.services.project_service import ProjectService
             
-            # 获取所有状态为processing的项目
             # 在线程内推送应用上下文，避免数据库访问报错
             if TaskScheduler._app is not None:
                 with TaskScheduler._app.app_context():
+                    # 重置处理中的项目状态
                     projects = Project.get_all()
+                    reset_count = 0
                     for project in projects:
                         if project.status == Project.STATUS_PROCESSING:
-                            # 将状态重置为pending，以便可以重新开始处理
                             Project.update_status(project.id, Project.STATUS_PENDING)
-                            logger.info(f'重置项目状态: ID={project.id}, Name={project.name} 从 processing 到 pending')
+                            reset_count += 1
                     
-                    # 获取所有状态为running的任务并重置为failed
+                    if reset_count > 0:
+                        logger.info(f'重置了 {reset_count} 个处理中的项目状态为待处理')
+                    
+                    # 重置运行中的任务状态
                     tasks = Task.get_running_tasks()
-                    for task in tasks:
-                        Task.update_status(task.id, Task.STATUS_FAILED, '系统重启导致任务中断')
-                        logger.info(f'重置任务状态: ID={task.id}, Type={task.task_type} 从 running 到 failed')
-                        
-                    # 重新检查所有项目的状态，确保与任务状态和段落状态一致
-                    projects = Project.get_all()
-                    for project in projects:
-                        # 获取项目统计信息
-                        stats = ProjectService.get_project_statistics(project.id)
-                        if stats:
-                            # 检查任务状态来确定项目状态
-                            running_tasks = [t for t in stats["tasks"] if t["status"] == "running"]
-                            completed_tasks = [t for t in stats["tasks"] if t["status"] == "completed"]
-                            failed_tasks = [t for t in stats["tasks"] if t["status"] == "failed"]
-                            
-                            # 获取段落状态
-                            segments = TextSegment.get_by_project(project.id)
-                            completed_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_COMPLETED)
-                            pending_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_PENDING)
-                            failed_segments = sum(1 for s in segments if s.audio_status == TextSegment.AUDIO_STATUS_FAILED)
-                            
-                            # 如果有运行中的任务，项目状态应该是processing
-                            if running_tasks and project.status != Project.STATUS_PROCESSING:
-                                Project.update_status(project.id, Project.STATUS_PROCESSING)
-                                logger.info(f'更新项目状态: ID={project.id}, Name={project.name} 到 processing (有运行中任务)')
-                            # 如果所有段落已完成且没有待处理段落，项目状态应该是completed
-                            elif (completed_segments == len(segments) and 
-                                  len(segments) > 0 and 
-                                  project.status != Project.STATUS_COMPLETED):
-                                Project.update_status(project.id, Project.STATUS_COMPLETED)
-                                logger.info(f'更新项目状态: ID={project.id}, Name={project.name} 到 completed (所有段落已完成)')
-                            # 如果有失败段落且没有已完成段落，项目状态应该是failed
-                            elif (failed_segments > 0 and 
-                                  completed_segments == 0 and 
-                                  project.status not in [Project.STATUS_FAILED, Project.STATUS_COMPLETED]):
-                                Project.update_status(project.id, Project.STATUS_FAILED)
-                                logger.info(f'更新项目状态: ID={project.id}, Name={project.name} 到 failed (有失败段落)')
+                    if tasks:
+                        for task in tasks:
+                            Task.update_status(task.id, Task.STATUS_FAILED, '系统重启导致任务中断')
+                        logger.info(f'重置了 {len(tasks)} 个运行中的任务状态为失败')
             else:
+                # 无应用上下文时的简化处理
                 projects = Project.get_all()
                 for project in projects:
                     if project.status == Project.STATUS_PROCESSING:
-                        # 将状态重置为pending，以便可以重新开始处理
                         Project.update_status(project.id, Project.STATUS_PENDING)
-                        logger.info(f'重置项目状态: ID={project.id}, Name={project.name} 从 processing 到 pending')
                 
-                # 获取所有状态为running的任务并重置为failed
                 tasks = Task.get_running_tasks()
                 for task in tasks:
                     Task.update_status(task.id, Task.STATUS_FAILED, '系统重启导致任务中断')
-                    logger.info(f'重置任务状态: ID={task.id}, Type={task.task_type} 从 running 到 failed')
         except Exception as e:
             logger.error(f'重置处理中项目状态失败: {str(e)}', exc_info=True)
