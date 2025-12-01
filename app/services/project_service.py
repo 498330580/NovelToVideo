@@ -1,7 +1,6 @@
 """项目管理服务"""
 import os
 import json
-from moviepy.editor import AudioFileClip
 from app.models.project import Project
 from app.models.text_segment import TextSegment
 from app.models.task import Task
@@ -174,27 +173,20 @@ class ProjectService:
             # 视频统计信息
             completed_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_COMPLETED)
             
-            # 计算预期的视频段落数量（根据所有音频段落的总时长计算）
+            # 计算预期的视频段落数量（根据文本字数估算音频时长）
+            # 为了提高页面加载速度，不再逐个读取音频文件
             expected_video_segments = 0
             if project.config and isinstance(project.config, dict):
                 segment_duration = project.config.get('segment_duration', DefaultConfig.DEFAULT_SEGMENT_DURATION)
                 
-                # 计算总音频时长（包括已完成和失败的音频段落）
-                total_audio_duration = 0
-                for segment in segments:
-                    if segment.audio_status in [TextSegment.AUDIO_STATUS_COMPLETED, TextSegment.AUDIO_STATUS_FAILED] and segment.audio_path:
-                        # 从音频文件获取时长
-                        try:
-                            audio_clip = AudioFileClip(segment.audio_path)
-                            total_audio_duration += audio_clip.duration
-                            audio_clip.close()
-                        except:
-                            # 如果无法获取音频时长，跳过该段落
-                            pass
+                # 根据总字数估算音频时长
+                # 假设平均语速为每秒4个汉字（edge-tts的标准语速）
+                # 但为了保险起见，使用每秒3个汉字作为估算基础
+                estimated_audio_duration = total_words / 3
                 
-                # 根据总音频时长和分段时长计算预期视频段落数
+                # 根据估算的音频时长和分段时长计算预期视频段落数
                 if segment_duration > 0:
-                    expected_video_segments = int(total_audio_duration / segment_duration) + (1 if total_audio_duration % segment_duration > 0 else 0)
+                    expected_video_segments = max(1, int(estimated_audio_duration / segment_duration) + (1 if estimated_audio_duration % segment_duration > 0 else 0))
             
             # 总视频段落数 = 预期视频段落数量
             total_video_segments = expected_video_segments
