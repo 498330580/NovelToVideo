@@ -172,30 +172,12 @@ class ProjectService:
             
             # 视频统计信息
             completed_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_COMPLETED)
+            pending_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_PENDING)
+            failed_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_FAILED)
             
-            # 计算预期的视频段落数量（根据文本字数估算音频时长）
-            # 为了提高页面加载速度，不再逐个读取音频文件
-            expected_video_segments = 0
-            if project.config and isinstance(project.config, dict):
-                segment_duration = project.config.get('segment_duration', DefaultConfig.DEFAULT_SEGMENT_DURATION)
-                
-                # 根据总字数估算音频时长
-                # 假设平均语速为每秒4个汉字（edge-tts的标准语速）
-                # 但为了保险起见，使用每秒3个汉字作为估算基础
-                estimated_audio_duration = total_words / 3
-                
-                # 根据估算的音频时长和分段时长计算预期视频段落数
-                if segment_duration > 0:
-                    expected_video_segments = max(1, int(estimated_audio_duration / segment_duration) + (1 if estimated_audio_duration % segment_duration > 0 else 0))
-            
-            # 总视频段落数 = 预期视频段落数量
-            total_video_segments = expected_video_segments
-            
-            # 待处理视频段落 = 总视频段落数 - 已完成视频段落数
-            pending_video_segments = total_video_segments - completed_video_segments
-            
-            # 确保待处理视频段落不为负数
-            pending_video_segments = max(0, pending_video_segments)
+            # 总视频段落数 = 数据库中实际记录的视频段落数
+            # 这是根据实际生成的视频数量，而不是估算值
+            total_video_segments = len(video_segments)
             
             return {
                 'total_segments': total_segments,
