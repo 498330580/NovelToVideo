@@ -173,7 +173,6 @@ class ProjectService:
             # 视频统计信息
             completed_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_COMPLETED)
             pending_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_PENDING)
-            failed_video_segments = sum(1 for s in video_segments if s.status == VideoSegment.STATUS_FAILED)
             
             # 总视频段落数 = 数据库中实际记录的视频段落数
             # 这是根据实际生成的视频数量，而不是估算值
