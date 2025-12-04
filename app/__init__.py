@@ -5,6 +5,8 @@ from app.utils.database import close_db, init_db
 from app.utils.logger import setup_logger, get_logger
 from app.services.task_scheduler import TaskScheduler
 
+__version__ = '1.0.0'
+
 logger = get_logger(__name__)
 
 
