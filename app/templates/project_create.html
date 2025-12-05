@@ -1,0 +1,508 @@
+{% extends "base.html" %}
+
+{% block title %}创建项目 - 小说转视频系统{% endblock %}
+
+{% block content %}
+<div class="create-project">
+    <h2>创建新项目</h2>
+    
+    <form id="createProjectForm" method="POST" action="{{ url_for('project.create') }}">
+        <div class="form-section">
+            <h3>基本信息</h3>
+            
+            <div class="form-group">
+                <label for="name">项目名称 <span class="required">*</span></label>
+                <input type="text" id="name" name="name" required placeholder="请输入项目名称">
+            </div>
+            
+            <div class="form-group">
+                <label for="description">项目描述</label>
+                <textarea id="description" name="description" rows="3" placeholder="请输入项目描述(可选)"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="text_content">小说文本 <span class="required">*</span></label>
+                <div class="text-input-section">
+                    <div class="input-tabs">
+                        <button type="button" class="tab-btn active" data-tab="paste">粘贴文本</button>
+                        <button type="button" class="tab-btn" data-tab="upload">上传文件</button>
+                    </div>
+                    
+                    <div class="tab-content active" id="paste-tab">
+                        <textarea id="text_content" name="text_content" rows="10" required placeholder="请粘贴小说文本内容..."></textarea>
+                    </div>
+                    
+                    <div class="tab-content" id="upload-tab">
+                        <div class="upload-area">
+                            <input type="file" id="text_file" accept=".txt" />
+                            <div class="upload-box">
+                                <p>选择TXT文件或拖动文件到此</p>
+                                <small>支持UTF-8, GBK, GB2312等各種中文编码</small>
+                            </div>
+                        </div>
+                        <div id="file_status" class="file-status" style="display: none;"></div>
+                    </div>
+                </div>
+                <small class="form-help">支持最多500万字</small>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>语音参数</h3>
+            
+            <div class="form-group">
+                <label for="voice">语音角色</label>
+                <select id="voice" name="voice">
+                    <option value="zh-CN-XiaoxiaoNeural">晓晓 (女声)</option>
+                    <option value="zh-CN-YunxiNeural">云希 (男声)</option>
+                    <option value="zh-CN-YunyangNeural">云扬 (男声)</option>
+                    <option value="zh-CN-XiaoyiNeural">晓伊 (女声)</option>
+                </select>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="rate">语速</label>
+                    <select id="rate" name="rate">
+                        <option value="-50%">0.5倍速</option>
+                        <option value="-25%">0.75倍速</option>
+                        <option value="+0%" selected>正常</option>
+                        <option value="+25%">1.25倍速</option>
+                        <option value="+50%">1.5倍速</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="pitch">音调</label>
+                    <select id="pitch" name="pitch">
+                        <option value="-50Hz">低音</option>
+                        <option value="+0Hz" selected>正常</option>
+                        <option value="+50Hz">高音</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="volume">音量</label>
+                    <select id="volume" name="volume">
+                        <option value="-50%">50%</option>
+                        <option value="+0%" selected>100%</option>
+                        <option value="+50%">150%</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>视频参数</h3>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="resolution">分辨率</label>
+                    <select id="resolution" name="resolution">
+                        <option value="1280,720">1280x720 (HD)</option>
+                        <option value="1920,1080" selected>1920x1080 (Full HD)</option>
+                        <option value="2560,1440">2560x1440 (2K)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="fps">帧率</label>
+                    <select id="fps" name="fps">
+                        <option value="24">24 fps</option>
+                        <option value="30" selected>30 fps</option>
+                        <option value="60">60 fps</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="bitrate">码率</label>
+                    <select id="bitrate" name="bitrate">
+                        <option value="1000k">1000k</option>
+                        <option value="2000k" selected>2000k</option>
+                        <option value="5000k">5000k</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="format">视频格式</label>
+                    <select id="format" name="format">
+                        <option value="mp4" selected>MP4</option>
+                        <option value="avi">AVI</option>
+                        <option value="mkv">MKV</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="segment_duration">分片时长(秒)</label>
+                    <input type="number" id="segment_duration" name="segment_duration" value="600" min="300" max="3600">
+                    <small class="form-help">300-3600秒</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>分段参数</h3>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="segment_mode">分段模式</label>
+                    <select id="segment_mode" name="segment_mode">
+                        <option value="edge_tts" selected>按Edge-TTS字节限制分段</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="alert alert-info">
+                <p><strong>分段说明：</strong></p>
+                <ul>
+                    <li><strong>Edge-TTS字节限制分段：</strong>根据Edge-TTS服务的4096字节限制自动分段，确保语音合成稳定性</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>视频背景图片</h3>
+            
+            <div class="form-group">
+                <label for="use_custom_background">背景图片选项</label>
+                <div class="radio-group">
+                    <label class="radio-option">
+                        <input type="radio" name="background_option" value="default" checked>
+                        <span>使用默认背景</span>
+                    </label>
+                    <label class="radio-option">
+                        <input type="radio" name="background_option" value="custom">
+                        <span>上传自定义背景图片</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group" id="background_upload_section" style="display: none;">
+                <label for="background_image">上传背景图片</label>
+                <input type="file" id="background_image" name="background_image" accept="image/*">
+                <small class="form-help">支持JPG、PNG格式，建议分辨率与视频分辨率匹配</small>
+                <div id="background_status" class="file-status" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">创建项目</button>
+            <button type="reset" class="btn btn-secondary">重置</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 上传不同文件类型的处理
+const textUploadInput = document.getElementById('text_file');
+const textContentArea = document.getElementById('text_content');
+const fileStatusDiv = document.getElementById('file_status');
+const uploadArea = document.querySelector('.upload-area');
+
+// 模拟文件上传
+// 点击上传区域或拖动
+if (uploadArea && textUploadInput) {
+    uploadArea.addEventListener('click', () => textUploadInput.click());
+    
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+            textUploadInput.files = e.dataTransfer.files;
+            handleFileUpload();
+        }
+    });
+    
+    textUploadInput.addEventListener('change', handleFileUpload);
+}
+
+// 处理文件上传
+function handleFileUpload() {
+    const file = textUploadInput.files[0];
+    if (!file) return;
+    
+    if (!file.name.endsWith('.txt')) {
+        showFileError('仅支持.txt文件');
+        return;
+    }
+    
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+        showFileError('文件大小不能超过50MB');
+        return;
+    }
+    
+    showFileLoading('正在粘贴文件...');
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const content = e.target.result;
+            if (!content.trim()) {
+                showFileError('文件为空');
+                return;
+            }
+            
+            // 检查字数是否超过5百万
+            const charCount = content.length;
+            if (charCount > 5000000) {
+                showFileError(`文件太大(当前${(charCount/1000000).toFixed(2)}百万字)，最多支持500万字`);
+                return;
+            }
+            
+            // 成功分析文件
+            textContentArea.value = content;
+            showFileSuccess(`成功上传，读取字数: ${charCount}`);
+            
+            // 自动切换到粘贴折叠
+            setTimeout(() => {
+                switchTab('paste');
+            }, 1500);
+            
+        } catch (error) {
+            showFileError(`文件读取失败: ${error.message}`);
+        }
+    };
+    
+    reader.onerror = () => {
+        showFileError('文件读取失败');
+    };
+    
+    // 谎断编码并读取
+    detectEncoding(file, reader);
+}
+
+// 检测文件编码
+function detectEncoding(file, reader) {
+    const headerReader = new FileReader();
+    const headerBlob = file.slice(0, Math.min(file.size, 100000)); // 读取前100KB检测
+    
+    headerReader.onload = () => {
+        const arrayBuffer = headerReader.result;
+        let encoding = detectEncodingFromBuffer(arrayBuffer);
+        
+        // 一整个文件编码检测
+        reader.readAsText(file, encoding);
+    };
+    
+    headerReader.readAsArrayBuffer(headerBlob);
+}
+
+// 从二进制数据检测编码
+function detectEncodingFromBuffer(arrayBuffer) {
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    // 检测UTF-8 BOM
+    if (uint8Array[0] === 0xef && uint8Array[1] === 0xbb && uint8Array[2] === 0xbf) {
+        return 'utf-8';
+    }
+    
+    // 检测UTF-16 BOM
+    if (uint8Array[0] === 0xff && uint8Array[1] === 0xfe) {
+        return 'utf-16le';
+    }
+    if (uint8Array[0] === 0xfe && uint8Array[1] === 0xff) {
+        return 'utf-16be';
+    }
+    
+    // 检测效矩形提示可能是GBK
+    // 处理中文编码（GBK、BIG5的常見字节模式）
+    let gbkLikelyCount = 0;
+    for (let i = 0; i < Math.min(uint8Array.length - 1, 10000); i++) {
+        const byte1 = uint8Array[i];
+        const byte2 = uint8Array[i + 1];
+        
+        // GBK中文常見茉位
+        if ((byte1 >= 0xa1 && byte1 <= 0xfe) && (byte2 >= 0x40 && byte2 <= 0xfe)) {
+            gbkLikelyCount++;
+        }
+    }
+    
+    // 如果検测到较多的GBK粗佋，使用GBK
+    if (gbkLikelyCount > 5) {
+        return 'gbk';
+    }
+    
+    // 默认UTF-8
+    return 'utf-8';
+}
+
+function showFileLoading(message) {
+    fileStatusDiv.className = 'file-status loading';
+    fileStatusDiv.textContent = message;
+    fileStatusDiv.style.display = 'block';
+}
+
+function showFileSuccess(message) {
+    fileStatusDiv.className = 'file-status success';
+    fileStatusDiv.textContent = message;
+    fileStatusDiv.style.display = 'block';
+}
+
+function showFileError(message) {
+    fileStatusDiv.className = 'file-status error';
+    fileStatusDiv.textContent = message;
+    fileStatusDiv.style.display = 'block';
+    textUploadInput.value = ''; // 清除上传的文件
+}
+
+// 切换折叠
+function switchTab(tabName) {
+    // 隐藏所有tab内容
+    document.querySelectorAll('.tab-content').forEach(el => {
+        el.classList.remove('active');
+    });
+    // 移除所有按钟的active类
+    document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('active');
+    });
+    
+    // 显示选中的tab
+    const tabId = tabName === 'paste' ? 'paste-tab' : 'upload-tab';
+    document.getElementById(tabId).classList.add('active');
+    
+    // 标记选中的按钟
+    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+}
+
+// tab按钟点击事件
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchTab(btn.dataset.tab);
+    });
+});
+
+// 背景图片选项切换
+document.querySelectorAll('input[name="background_option"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const uploadSection = document.getElementById('background_upload_section');
+        if (this.value === 'custom') {
+            uploadSection.style.display = 'block';
+        } else {
+            uploadSection.style.display = 'none';
+            // 清除已选择的文件
+            document.getElementById('background_image').value = '';
+            document.getElementById('background_status').style.display = 'none';
+        }
+    });
+});
+
+// 背景图片文件验证
+document.getElementById('background_image').addEventListener('change', function() {
+    const file = this.files[0];
+    const statusDiv = document.getElementById('background_status');
+    
+    if (!file) {
+        statusDiv.style.display = 'none';
+        return;
+    }
+    
+    // 检查文件类型
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+    if (!allowedTypes.includes(file.type)) {
+        showBackgroundError('仅支持JPG、PNG格式的图片');
+        this.value = '';
+        return;
+    }
+    
+    // 检查文件大小 (最大10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+        showBackgroundError('图片大小不能超过10MB');
+        this.value = '';
+        return;
+    }
+    
+    showBackgroundSuccess(`已选择图片: ${file.name}`);
+});
+
+function showBackgroundLoading(message) {
+    const statusDiv = document.getElementById('background_status');
+    statusDiv.className = 'file-status loading';
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+}
+
+function showBackgroundSuccess(message) {
+    const statusDiv = document.getElementById('background_status');
+    statusDiv.className = 'file-status success';
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+}
+
+function showBackgroundError(message) {
+    const statusDiv = document.getElementById('background_status');
+    statusDiv.className = 'file-status error';
+    statusDiv.textContent = message;
+    statusDiv.style.display = 'block';
+}
+
+// 创建项目表单提交
+document.getElementById('createProjectForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const form = e.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    
+    // 验证文本内容
+    const textContent = document.getElementById('text_content').value.trim();
+    if (!textContent) {
+        alert('文本内容不能为空');
+        return;
+    }
+    
+    // 检查背景图片选项
+    const backgroundOption = document.querySelector('input[name="background_option"]:checked').value;
+    const backgroundFile = document.getElementById('background_image').files[0];
+    
+    // 如果选择了自定义背景但没有上传文件
+    if (backgroundOption === 'custom' && !backgroundFile) {
+        alert('请选择背景图片文件');
+        return;
+    }
+    
+    // 创建FormData对象
+    const formData = new FormData(form);
+    
+    // 禁用提交按钟
+    submitBtn.disabled = true;
+    submitBtn.textContent = '创建中...';
+    
+    try {
+        const response = await fetch(form.action, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('项目创建成功!正在处理中...');
+            window.location.href = `/project/${result.project_id}`;
+        } else {
+            alert('创建失败: ' + result.error);
+            submitBtn.disabled = false;
+            submitBtn.textContent = '创建项目';
+        }
+    } catch (error) {
+        alert('创建失败: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.textContent = '创建项目';
+    }
+});
+</script>
+{% endblock %}

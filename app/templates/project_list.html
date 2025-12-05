@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}项目列表 - 小说转视频系统{% endblock %}
+
+{% block content %}
+<div class="project-list" data-aos="fade-up">
+    <!-- 页面标题 -->
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h2 class="mb-2">
+                <i class="fas fa-list text-primary me-2"></i>项目列表
+            </h2>
+            <p class="text-muted">浏覧和管理所有项目</p>
+        </div>
+        <a href="{{ url_for('project.create') }}" class="btn btn-primary btn-lg" data-aos="zoom-in">
+            <i class="fas fa-plus-circle me-2"></i>创建新项目
+        </a>
+    </div>
+    
+    {% if projects %}
+    <!-- 项目表格 -->
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="fw-bold">
+                            <i class="fas fa-hashtag me-2"></i>ID
+                        </th>
+                        <th class="fw-bold">
+                            <i class="fas fa-film me-2"></i>项目名称
+                        </th>
+                        <th class="fw-bold">
+                            <i class="fas fa-align-left me-2"></i>描述
+                        </th>
+                        <th class="fw-bold">
+                            <i class="fas fa-signal me-2"></i>状态
+                        </th>
+                        <th class="fw-bold">
+                            <i class="fas fa-calendar-alt me-2"></i>创建时间
+                        </th>
+                        <th class="fw-bold text-center">
+                            <i class="fas fa-tools me-2"></i>操作
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for project in projects %}
+                    <tr class="align-middle" data-aos="fade-up" data-aos-delay="{{ loop.index0 * 50 }}">
+                        <td>
+                            <span class="badge bg-secondary">#{{ project.id }}</span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('project.detail', project_id=project.id) }}" class="fw-bold text-decoration-none text-dark">
+                                {{ project.name }}
+                            </a>
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ project.description or '-' }}</small>
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ project.status }} rounded-pill">
+                                {% if project.status == 'pending' %}
+                                    <i class="fas fa-hourglass me-1"></i>待处理
+                                {% elif project.status == 'processing' %}
+                                    <i class="fas fa-spinner fa-spin me-1"></i>处理中
+                                {% elif project.status == 'completed' %}
+                                    <i class="fas fa-check-circle me-1"></i>已完成
+                                {% elif project.status == 'failed' %}
+                                    <i class="fas fa-exclamation-circle me-1"></i>失败
+                                {% elif project.status == 'cancelled' %}
+                                    <i class="fas fa-ban me-1"></i>已取消
+                                {% else %}
+                                    {{ project.status }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>
+                            <small class="text-muted" title="{{ project.created_at }}">
+                                {{ project.created_at.strftime('%Y-%m-%d') if project.created_at else '-' }}
+                            </small>
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <a href="{{ url_for('project.detail', project_id=project.id) }}" class="btn btn-outline-primary" title="查看详情">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <button type="button" class="btn btn-outline-danger" data-project-id="{{ project.id }}" data-project-name="{{ project.name }}" onclick="deleteProject(this)" title="删除项目">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-light text-muted">
+            <small>总计 <strong>{{ projects|length }}</strong> 个项目</small>
+        </div>
+    </div>
+    {% else %}
+    <!-- 空状态 -->
+    <div class="alert alert-info border-0 shadow-sm" role="alert" data-aos="zoom-in">
+        <div class="text-center py-5">
+            <i class="fas fa-inbox fa-3x mb-3 d-block" style="color: #3498db; opacity: 0.3;"></i>
+            <h5 class="text-muted fw-bold">没有项目</h5>
+            <p class="text-muted">当前还没有任何项目，<a href="{{ url_for('project.create') }}" class="text-primary fw-bold">上提创建一个吧</a></p>
+        </div>
+    </div>
+    {% endif %}
+    
+
+</div>
+{% endblock %}
+
+<style>
+    .project-list {
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .table thead th {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .badge-pending {
+        background-color: #ffc107 !important;
+        color: #333;
+    }
+
+    .badge-processing {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white;
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
+    }
+
+    .badge-completed {
+        background-color: #28a745 !important;
+        color: white;
+    }
+
+    .badge-failed {
+        background-color: #dc3545 !important;
+        color: white;
+    }
+
+    .badge-cancelled {
+        background-color: #6c757d !important;
+        color: white;
+    }
+    
+
+</style>
+
+{% block scripts %}
+<script>
+function deleteProject(button) {
+    console.log('Delete button clicked');
+    const projectId = button.getAttribute('data-project-id');
+    const projectName = button.getAttribute('data-project-name');
+    
+    console.log('Project ID:', projectId);
+    console.log('Project Name:', projectName);
+    
+    // 使用浏览器原生确认对话框
+    if (confirm(`确定要删除项目 "${projectName}" 吗？此操作不可恢复！`)) {
+        // 用户确认删除，执行删除操作
+        performDelete(button, projectId);
+    }
+}
+
+function performDelete(button, projectId) {
+    // 改变按钮状态
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    
+    fetch(`/project/${projectId}/delete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            // 使用Toastr显示成功消息
+            toastr.success('项目删除成功');
+            setTimeout(() => {
+                location.reload();
+            }, 1500);
+        } else {
+            // 使用Toastr显示错误消息
+            toastr.error('删除失败: ' + result.error);
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-trash"></i>';
+        }
+    })
+    .catch(error => {
+        // 使用Toastr显示错误消息
+        toastr.error('删除失败: ' + error.message);
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-trash"></i>';
+    });
+}
+</script>
+{% endblock %}
