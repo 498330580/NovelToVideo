@@ -1,5 +1,6 @@
 """视频生成服务"""
 import os
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import AudioFileClip, ImageClip, concatenate_videoclips
 from app.models.text_segment import TextSegment
@@ -214,7 +215,9 @@ class VideoService:
     @staticmethod
     def _create_video_clip(audio_path, image_path, config):
         """
-        创建视频片段
+        创建视频片段（内存优化版本）
+        
+        使用 PIL 直接读取图片数据，避免 ImageClip 的重复加载导致的内存溢出
         
         Args:
             audio_path: 音频文件路径
@@ -224,20 +227,42 @@ class VideoService:
         Returns:
             视频片段对象
         """
+        import numpy as np
+        from moviepy.editor import ImageClip, AudioFileClip
+        
         fps = config.get('fps', DefaultConfig.DEFAULT_FPS)
         
-        # 加载音频
-        audio_clip = AudioFileClip(audio_path)
-        duration = audio_clip.duration
-        
-        # 创建图片视频
-        image_clip = ImageClip(image_path, duration=duration)
-        image_clip = image_clip.set_fps(fps)
-        
-        # 设置音频
-        video_clip = image_clip.set_audio(audio_clip)
-        
-        return video_clip
+        try:
+            # 加载音频
+            audio_clip = AudioFileClip(audio_path)
+            duration = audio_clip.duration
+            
+            # 使用 PIL 直接读取图片，避免 ImageClip 的内存问题
+            # PIL 的内存管理比 imageio 更高效
+            pil_image = Image.open(image_path)
+            # 转换为 RGB 格式（如果需要）
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            
+            # 转换为 numpy 数组
+            image_array = np.array(pil_image)
+            pil_image.close()  # 立即关闭 PIL 图像以释放内存
+            
+            # 从 numpy 数组创建 ImageClip（这样可以避免 imageio 的内存溢出问题）
+            image_clip = ImageClip(image_array, duration=duration)
+            image_clip = image_clip.set_fps(fps)
+            
+            # 设置音频
+            video_clip = image_clip.set_audio(audio_clip)
+            
+            return video_clip
+            
+        except MemoryError as e:
+            logger.error(f'创建视频片段时内存不足: audio_path={audio_path}, error={str(e)}')
+            raise
+        except Exception as e:
+            logger.error(f'创建视频片段失败: audio_path={audio_path}, error={str(e)}')
+            raise
     
     @staticmethod
     def _merge_and_split_videos(project_id, video_clips, config, temp_video_dir,
