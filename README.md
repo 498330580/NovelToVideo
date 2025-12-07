@@ -55,7 +55,7 @@
 
 ```bash
 # 克隆或下载项目
-cd 小说转视频
+cd NovelToVideo
 
 # 使用docker-compose启动服务
 docker-compose up -d
