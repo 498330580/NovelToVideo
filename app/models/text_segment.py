@@ -1,5 +1,8 @@
 """文本段落模型"""
+import os
+from pathlib import Path
 from app.utils.database import execute_query, execute_many
+from config import DefaultConfig
 
 
 class TextSegment:
@@ -151,15 +154,17 @@ class TextSegment:
         Args:
             segment_id: 段落ID
             status: 新状态
-            audio_path: 音频文件路径
+            audio_path: 音频文件路径（支持绝对路径或相对路径，会自动转换为相对路径保存）
         """
         if audio_path:
+            # 转换为相对路径后保存
+            relative_path = cls.convert_to_relative_path(audio_path)
             query = '''
                 UPDATE text_segments 
                 SET audio_status = ?, audio_path = ?
                 WHERE id = ?
             '''
-            execute_query(query, (status, audio_path, segment_id), fetch=False)
+            execute_query(query, (status, relative_path, segment_id), fetch=False)
         else:
             query = '''
                 UPDATE text_segments 
@@ -272,6 +277,55 @@ class TextSegment:
             audio_path=get('audio_path'),
             created_at=get('created_at')
         )
+    
+    @staticmethod
+    def convert_to_relative_path(absolute_path):
+        """
+        将绝对路径转换为相对路径
+        相对于 temp/audio 目录
+        
+        Args:
+            absolute_path: 绝对路径
+            
+        Returns:
+            相对路径（仅文件名）
+        """
+        if not absolute_path:
+            return None
+        
+        # 只保存文件名（最后一部分）
+        return os.path.basename(absolute_path)
+    
+    @staticmethod
+    def convert_to_absolute_path(relative_path):
+        """
+        将相对路径转换为绝对路径
+        重建完整路径：temp/audio/{relative_path}
+        
+        Args:
+            relative_path: 相对路径（通常是文件名）
+            
+        Returns:
+            绝对路径
+        """
+        if not relative_path:
+            return None
+        
+        # 如果已经是绝对路径，直接返回
+        if os.path.isabs(relative_path):
+            return relative_path
+        
+        # 拼接到 temp/audio 目录
+        return os.path.join(DefaultConfig.TEMP_AUDIO_DIR, relative_path)
+    
+    def get_absolute_audio_path(self):
+        """
+        获取绝对音频路径
+        
+        Returns:
+            绝对路径
+        """
+        return self.convert_to_absolute_path(self.audio_path)
     
     def to_dict(self):
         """

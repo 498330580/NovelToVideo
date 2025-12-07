@@ -88,8 +88,10 @@ class VideoService:
             video_clips = []
             for idx, segment in enumerate(segments):
                 try:
+                    # 使用绝对路径创建视频片段
+                    audio_abs_path = segment.get_absolute_audio_path()
                     clip = VideoService._create_video_clip(
-                        segment.audio_path,
+                        audio_abs_path,
                         background_image,
                         config
                     )
