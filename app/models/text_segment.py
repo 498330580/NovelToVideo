@@ -299,14 +299,19 @@ class TextSegment:
     @staticmethod
     def convert_to_absolute_path(relative_path):
         """
-        将相对路径转换为绝对路径
-        重建完整路径：temp/audio/{relative_path}
+        [已过时] 将相对路径转换为绝对路径
+        
+        ⚠️ 警告：此方法已过时，无法正确处理项目ID子目录！
+        请使用实例方法 get_absolute_audio_path() 替代。
+        
+        该方法无法处理新的目录结构：temp/audio/{project_id}/{filename}
+        保留此方法仅为向后兼容，但不应在新代码中使用。
         
         Args:
             relative_path: 相对路径（通常是文件名）
             
         Returns:
-            绝对路径
+            绝对路径（不包含项目ID，可能不正确）
         """
         if not relative_path:
             return None
@@ -315,7 +320,8 @@ class TextSegment:
         if os.path.isabs(relative_path):
             return relative_path
         
-        # 拼接到 temp/audio 目录
+        # ⚠️ 注意：此路径不包含项目ID，可能不正确
+        # 应该使用 get_absolute_audio_path() 实例方法替代
         return os.path.join(DefaultConfig.TEMP_AUDIO_DIR, relative_path)
     
     def get_absolute_audio_path(self):
@@ -325,7 +331,15 @@ class TextSegment:
         Returns:
             绝对路径
         """
-        return self.convert_to_absolute_path(self.audio_path)
+        if not self.audio_path:
+            return None
+        
+        # 如果已经是绝对路径，直接返回
+        if os.path.isabs(self.audio_path):
+            return self.audio_path
+        
+        # 拼接到 temp/audio/{project_id}/ 目录
+        return os.path.join(DefaultConfig.TEMP_AUDIO_DIR, str(self.project_id), self.audio_path)
     
     def to_dict(self):
         """

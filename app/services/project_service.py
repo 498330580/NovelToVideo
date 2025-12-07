@@ -49,8 +49,11 @@ class ProjectService:
             output_path = os.path.join(DefaultConfig.OUTPUT_DIR, safe_name)
             FileHandler.ensure_dir(output_path)
             
-            # 创建项目
-            project_id = Project.create(name, description, output_path, config)
+            # 转换为相对路径保存到数据库（仅保存目录名）
+            relative_output_path = Project.convert_to_relative_path(output_path)
+            
+            # 创建项目（使用相对路径）
+            project_id = Project.create(name, description, relative_output_path, config)
             
             logger.info(f'项目创建成功: {name} (ID: {project_id})')
             
@@ -107,8 +110,9 @@ class ProjectService:
                 return False, '项目不存在'
             
             # 删除输出文件
-            if project.output_path and os.path.exists(project.output_path):
-                FileHandler.delete_directory(project.output_path)
+            output_path = project.get_absolute_output_path()
+            if output_path and os.path.exists(output_path):
+                FileHandler.delete_directory(output_path)
             
             # 删除临时文件
             temp_audio_path = os.path.join(DefaultConfig.TEMP_AUDIO_DIR, str(project_id))

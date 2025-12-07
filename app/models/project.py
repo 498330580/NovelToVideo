@@ -1,7 +1,9 @@
 """项目模型"""
+import os
 import json
 from datetime import datetime
 from app.utils.database import execute_query
+from config import DefaultConfig
 
 
 class Project:
@@ -142,6 +144,63 @@ class Project:
         query = 'DELETE FROM projects WHERE id = ?'
         execute_query(query, (project_id,), fetch=False)
     
+    @staticmethod
+    def convert_to_relative_path(absolute_path):
+        """
+        将绝对路径转换为相对路径
+        相对于 output 目录
+        
+        Args:
+            absolute_path: 绝对路径
+            
+        Returns:
+            相对路径（仅目录名）
+        """
+        if not absolute_path:
+            return None
+        
+        # 只保存目录名（最后一部分）
+        return os.path.basename(absolute_path)
+    
+    @staticmethod
+    def convert_to_absolute_path(relative_path):
+        """
+        将相对路径转换为绝对路径
+        重建完整路径：output/{relative_path}
+        
+        Args:
+            relative_path: 相对路径（通常是目录名）
+            
+        Returns:
+            绝对路径
+        """
+        if not relative_path:
+            return None
+        
+        # 如果已经是绝对路径，直接返回
+        if os.path.isabs(relative_path):
+            return relative_path
+        
+        # 拼接到 output 目录
+        return os.path.join(DefaultConfig.OUTPUT_DIR, relative_path)
+    
+    def get_absolute_output_path(self):
+        """
+        获取绝对输出路径
+        
+        Returns:
+            绝对路径
+        """
+        if not self.output_path:
+            return None
+        
+        # 如果已经是绝对路径，直接返回
+        if os.path.isabs(self.output_path):
+            return self.output_path
+        
+        # 拼接到 output 目录
+        return os.path.join(DefaultConfig.OUTPUT_DIR, self.output_path)
+    
     @classmethod
     def _from_row(cls, row):
         """
@@ -178,6 +237,6 @@ class Project:
             'created_at': self.created_at,
             'updated_at': self.updated_at,
             'status': self.status,
-            'output_path': self.output_path,
+            'output_path': self.get_absolute_output_path(),  # 返回绝对路径供前端显示
             'config': self.config
         }

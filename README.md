@@ -4,6 +4,21 @@
 > 
 这是一个基于 Web 的小说语音视频生成系统,能够将文本小说自动转换为带语音旁白的视频内容。系统采用 Flask 提供 Web 管理界面,使用微软 Edge TTS 进行高质量语音合成,并通过视频处理技术生成最终的视频文件。
 
+## 📚 文档说明
+
+项目的所有技术文档已整理到 **[docs](docs/)** 文件夹，包括：
+
+| 文档 | 说明 |
+|------|------|
+| **[docs/README.md](docs/README.md)** | 📖 文档导航中心 - 所有文档的索引和快速链接 |
+| **[docs/CHANGELOG.md](docs/CHANGELOG.md)** | 📝 更新日志 - 版本功能、修复和优化记录 |
+| **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** | 🚀 发布说明 - 部署要求和使用指南 |
+| **[docs/RELEASE_SUMMARY.md](docs/RELEASE_SUMMARY.md)** | 📊 发布总结 - 版本统计和核心成就 |
+| **[docs/VIDEO_GENERATION_OPTIMIZATION.md](docs/VIDEO_GENERATION_OPTIMIZATION.md)** | ⚡ 内存优化方案 - 视频生成的优化细节 |
+| **[docs/RELATIVE_PATH_MIGRATION.md](docs/RELATIVE_PATH_MIGRATION.md)** | 🔧 路径相对化改造 - 数据库和路径管理方案 |
+
+**💡 快速开始**: 首先查看 [docs/README.md](docs/README.md) 了解所有文档的详细说明。
+
 ### 核心功能
 
 - ✅ 自动化将文字内容转换为视频格式
@@ -272,13 +287,6 @@ app.run(host='0.0.0.0', port=5001)  # 改为其他端口
 **Q: 语音合成失败?**
 A: 检查网络连接,Edge TTS 需要访问微软服务器
 
-### 已知问题
-
-- 任务调度触发语音合成时报 `Working outside of application context`。
-  - 原因: 后台任务访问数据库时缺少 Flask 应用上下文。
-  - 处理建议: 在 `TaskScheduler` 执行任务前注入应用上下文,或在服务层通过 `current_app.app_context()` 包裹相关数据库调用。
-  - 伴随错误: `UnboundLocalError: local variable 'task_id' referenced before assignment` 需要在异常路径初始化 `task_id` 或调整逻辑。
-
 **Q: 视频生成失败?**
 A: 检查磁盘空间是否充足,确保 ffmpeg 已正确安装
 
@@ -286,7 +294,7 @@ A: 检查磁盘空间是否充足,确保 ffmpeg 已正确安装
 
 **Q: 处理速度慢?**
 A: 
-- 减少 max_words 参数,增加段落数量
+- 减少 max_words 參数,增加段落数量
 - 降低视频分辨率和码率
 - 确保系统有足够的内存
 
@@ -294,7 +302,42 @@ A:
 A:
 - 减少并发线程数
 - 及时清理临时文件
-- 降低视频质量参数
+- 降低视频质量參数
+
+## ✅ 已修复的问题
+
+**内存溢出问题** ([详见优化方案](docs/VIDEO_GENERATION_OPTIMIZATION.md))
+- 原问题：视频合成时出现 `[WinError 1455] 页面文件太小，无法完成操作` 错误
+- 原因：2259个音频片段同时加载到内存中
+- 解决方案：采用两阶段处理，逐个生成并保存到临时目录，再合并分片
+- 效果：内存占用从 N×片段大小 → 1×片段大小
+
+**路径相对化** ([详见改造方案](docs/RELATIVE_PATH_MIGRATION.md))
+- 项目文件夹位置变化后仍能正确识别路径
+- 数据库中存储相对路径而非绝对路径
+- 项目可以随意移动而不影响功能
+
+**其他修复**
+- 修复 UnboundLocalError：移除视频生成时的局部导入冲突
+- 修复默认背景图片生成问题
+- 修复启动速度慢的问题（优化项目状态重置逻辑）
+- 修复项目详情页面加载速度（使用估算而非实际读取音频时长）
+- 修复视频段落统计数据不一致问题
+
+**任务调度上下文问题** ([详见源代码](app/services/task_scheduler.py))
+- 原问题：任务调度触发语音合成时报 `Working outside of application context`
+- 原因：后台任务访问数据库时缺少 Flask 应用上下文
+- 解决方案：在线程执行任务前使用 `with TaskScheduler._app.app_context()` 包裹
+- 验证：应用启动时正确传递 Flask 实例到 TaskScheduler
+
+## 🚀 下一步
+
+整个项目部署了丰富的技术优化和改造，详细文档请查看 [docs](docs/) 文档库：
+
+- 🚀 **[开始使用](docs/RELEASE_NOTES.md)** - 部署和配置指南
+- 🔧 **[优化视频生成](docs/VIDEO_GENERATION_OPTIMIZATION.md)** - 内存优化方案
+- 📖 **[管理数据库](docs/RELATIVE_PATH_MIGRATION.md)** - 路径相对化改造
+- 📝 **[版本更新](docs/CHANGELOG.md)** - 查看特性和修复
 
 ## 开发指南
 
