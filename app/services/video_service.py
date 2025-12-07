@@ -243,7 +243,15 @@ class VideoService:
     def _merge_and_split_videos(project_id, video_clips, config, temp_video_dir,
                                  output_path, project_name, task_id):
         """
-        合并并分片视频
+        合并并分片视频（内存优化版本）
+        
+        处理流程：
+        1. 将所有音频段落合并成完整视频
+        2. 将完整视频临时保存到 temp/video_segments/{project_id}/full_video.mp4
+        3. 从临时文件读取并按时长分片导出到 output/{project_name}/
+        4. 分片完成后删除临时文件
+        
+        这种处理方式支持小内存设备，避免完整视频长期占用内存
         
         Args:
             project_id: 项目ID
@@ -254,20 +262,45 @@ class VideoService:
             project_name: 项目名称
             task_id: 任务ID
         """
+        import shutil
+        from moviepy.editor import VideoFileClip
+        
         segment_duration = config.get('segment_duration', DefaultConfig.DEFAULT_SEGMENT_DURATION)
         video_format = config.get('format', DefaultConfig.DEFAULT_FORMAT)
         bitrate = config.get('bitrate', DefaultConfig.DEFAULT_BITRATE)
         fps = config.get('fps', DefaultConfig.DEFAULT_FPS)
         
-        # 合并所有视频片段
+        # 1. 合并所有视频片段
         logger.info('开始合并视频片段...')
         full_video = concatenate_videoclips(video_clips)
         total_duration = full_video.duration
         
         # 计算需要分成多少片
         num_segments = int(total_duration / segment_duration) + 1
-        
         logger.info(f'视频总时长: {total_duration}秒, 分片数: {num_segments}')
+        
+        # 2. 保存完整视频到临时文件夹（支持小内存设备）
+        temp_full_video_path = os.path.join(temp_video_dir, 'full_video.mp4')
+        logger.info(f'开始保存完整视频到临时位置: {temp_full_video_path}')
+        
+        full_video.write_videofile(
+            temp_full_video_path,
+            fps=fps,
+            codec='libx264',
+            bitrate=bitrate,
+            audio_codec='aac',
+            temp_audiofile=os.path.join(temp_video_dir, 'temp_audio_merge.m4a'),
+            remove_temp=True,
+            logger=None  # 禁用moviepy的日志输出
+        )
+        logger.info('完整视频已保存到临时位置')
+        
+        # 3. 释放内存中的完整视频对象
+        full_video.close()
+        
+        # 4. 从临时文件读取完整视频进行分片
+        logger.info('开始从临时文件读取完整视频进行分片处理...')
+        full_video_from_file = VideoFileClip(temp_full_video_path)
         
         # 确保输出目录存在
         FileHandler.ensure_dir(output_path)
@@ -289,40 +322,25 @@ class VideoService:
             # 检查数据库中是否已记录该片段
             existing_segment = VideoSegment.get_by_project_and_index(project_id, i)
             
-            # 如果文件已存在且大小大于0，则跳过
+            # 如果文件已存在且大小大于0，则删除后重新生成（覆盖处理）
             if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-                logger.info(f'视频片段已存在，跳过: {output_filename}')
-                
-                if not existing_segment:
-                    # 保存到数据库
-                    segment_id = VideoSegment.create(
-                        project_id,
-                        i,
-                        end_time - start_time,
-                        output_file
-                    )
-                    # 确保新创建的记录状态为completed
-                    VideoSegment.update_status(segment_id, VideoSegment.STATUS_COMPLETED)
-                else:
-                    # 更新现有记录的状态为completed
-                    VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_COMPLETED)
-                
-                # 更新进度
-                progress = 50 + (i + 1) / num_segments * 50  # 后50%进度
-                Task.update_progress(task_id, progress)
-                
-                continue
+                logger.info(f'视频片段已存在，删除后重新生成: {output_filename}')
+                try:
+                    os.remove(output_file)
+                except Exception as e:
+                    logger.warning(f'删除旧视频片段失败: {output_filename}, 错误: {str(e)}')
             
             # 如果文件不存在或大小为0，但数据库中有记录，需要更新数据库状态
             if existing_segment and (not os.path.exists(output_file) or os.path.getsize(output_file) == 0):
                 # 将数据库中的记录状态更新为pending，表示需要重新处理
                 VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_PENDING)
-                logger.info(f'视频文件不存在，更新数据库状态为待处理: 索引 {i}')
+                logger.info(f'视频文件不存在或为空，更新数据库状态为待处理: 索引 {i}')
             
             # 截取片段
-            segment_clip = full_video.subclip(start_time, end_time)
+            segment_clip = full_video_from_file.subclip(start_time, end_time)
             
             # 导出视频
+            logger.info(f'开始导出视频片段 ({i+1}/{num_segments}): {output_filename}')
             segment_clip.write_videofile(
                 output_file,
                 fps=fps,
@@ -359,7 +377,15 @@ class VideoService:
             
             logger.info(f'视频片段导出成功: {output_filename}')
         
-        # 关闭完整视频
-        full_video.close()
+        # 5. 关闭临时视频文件
+        full_video_from_file.close()
+        
+        # 6. 删除临时的完整视频文件
+        try:
+            if os.path.exists(temp_full_video_path):
+                os.remove(temp_full_video_path)
+                logger.info('临时完整视频文件已删除')
+        except Exception as e:
+            logger.warning(f'删除临时完整视频文件失败: {str(e)}')
         
         logger.info('所有视频片段导出完成')
