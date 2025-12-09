@@ -178,6 +178,23 @@ class TempVideoSegment:
             updated_at=row['updated_at']
         )
     
+    def get_absolute_temp_video_path(self):
+        """
+        获取临时视频的绝对路径
+        
+        Returns:
+            绝对路径
+        """
+        import os
+        from config import DefaultConfig
+        
+        # 如果 temp_video_path 已经是绝对路径，直接返回
+        if os.path.isabs(self.temp_video_path):
+            return self.temp_video_path
+        
+        # 否则以 TEMP_VIDEO_DIR 为基础路径
+        return os.path.join(DefaultConfig.TEMP_VIDEO_DIR, self.temp_video_path)
+    
     def to_dict(self):
         """
         转换为字典

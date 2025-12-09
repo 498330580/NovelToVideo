@@ -237,6 +237,28 @@ class VideoSynthesisQueue:
             'updated_at': self.updated_at
         }
     
+    def get_absolute_output_video_path(self):
+        """
+        获取最终输出视频的绝对路径
+        
+        Returns:
+            绝对路径
+        """
+        import os
+        from app.models.project import Project
+        
+        # 如果 output_video_path 已经是绝对路径，直接返回
+        if os.path.isabs(self.output_video_path):
+            return self.output_video_path
+        
+        # 否则以项目的输出路径为基础路径
+        project = Project.get_by_id(self.project_id)
+        if not project:
+            raise ValueError(f'Project not found: {self.project_id}')
+        
+        output_base_path = project.get_absolute_output_path()
+        return os.path.join(output_base_path, self.output_video_path)
+    
     def get_temp_segment_ids_json(self):
         """
         获取JSON格式的临时视频片段ID列表

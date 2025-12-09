@@ -135,16 +135,15 @@ class VideoService:
                 for segment in current_group:
                     try:
                         # 为每个音频创建临时视频片段记录
-                        # 注意：这里 temp_video_path 是占位符，实际路径在合成时生成
-                        temp_video_path = os.path.join(
-                            DefaultConfig.TEMP_VIDEO_DIR,
+                        # 注意：存储相对路径，基于 TEMP_VIDEO_DIR
+                        relative_temp_video_path = os.path.join(
                             str(project_id),
                             f'segment_{segment.id}.mp4'
                         )
                         temp_segment_id = TempVideoSegment.create(
                             project_id=project_id,
                             text_segment_id=segment.id,
-                            temp_video_path=temp_video_path
+                            temp_video_path=relative_temp_video_path
                         )
                         temp_segment_ids.append(temp_segment_id)
                         selected_segment_ids.add(segment.id)
@@ -154,14 +153,12 @@ class VideoService:
                 # 创建 VideoSynthesisQueue 记录
                 if temp_segment_ids:
                     try:
-                        output_video_path = os.path.join(
-                            output_path,
-                            f'{safe_name}_{video_index:03d}.{config.get("format", "mp4")}'
-                        )
+                        # 存储相对路径，基于项目的输出路径
+                        relative_output_video_path = f'{safe_name}_{video_index:03d}.{config.get("format", "mp4")}'
                         queue_id = VideoSynthesisQueue.create(
                             project_id=project_id,
                             video_index=video_index,
-                            output_video_path=output_video_path,
+                            output_video_path=relative_output_video_path,
                             temp_segment_ids=temp_segment_ids,
                             total_duration=current_duration
                         )
@@ -169,7 +166,7 @@ class VideoService:
                         queue_count += 1
                         video_index += 1
                     except Exception as e:
-                        logger.error(f'创建VideoSynthesisQueue失败: video_index={video_index}, {str(e)}')
+                        logger.error(f'创建VideoSynthesisQueue失败: video_index={video_index}, {str(e)})')
             
             logger.info(f'队列生成完成: 项目ID={project_id}, 总队列数={queue_count}')
             return True
@@ -397,9 +394,11 @@ class VideoService:
             for queue_record in queue_records:
                 queue_id = queue_record.id
                 video_index = queue_record.video_index
-                output_video_path = queue_record.output_video_path
                 temp_segment_ids = queue_record.temp_segment_ids  # TempVideoSegment ID列表
                 total_duration = queue_record.total_duration
+                
+                # 介纻时使用绝对路径
+                output_video_path = queue_record.get_absolute_output_video_path()
                 
                 logger.info(f'处理队列: queue_id={queue_id}, video_index={video_index}, temp_segments={len(temp_segment_ids)}')
                 
@@ -434,10 +433,11 @@ class VideoService:
                             continue
                         
                         try:
-                            temp_video_path = temp_seg_record.temp_video_path
+                            # 使用绝对路径上下文中的文件
+                            temp_video_abs_path = temp_seg_record.get_absolute_temp_video_path()
                             
                             # 检查文件是否已存在（断点续传）
-                            if os.path.exists(temp_video_path) and os.path.getsize(temp_video_path) > 0:
+                            if os.path.exists(temp_video_abs_path) and os.path.getsize(temp_video_abs_path) > 0:
                                 logger.debug(f'临时视频已存在，跳过生成')
                             else:
                                 # 生成临时视频
@@ -447,13 +447,13 @@ class VideoService:
                                 VideoService._create_and_save_video_segment(
                                     audio_abs_path,
                                     background_image,
-                                    temp_video_path,
+                                    temp_video_abs_path,
                                     config
                                 )
                             
                             # 更新状态为 synthesized
                             TempVideoSegment.update_status(temp_segment_id, TempVideoSegment.STATUS_SYNTHESIZED)
-                            temp_video_files.append(temp_video_path)
+                            temp_video_files.append(temp_video_abs_path)
                             temp_segment_records.append(temp_seg_record)
                         
                         except Exception as e:
@@ -501,9 +501,10 @@ class VideoService:
                     for temp_segment_record in temp_segment_records:
                         # 删除临时视频文件
                         try:
-                            if os.path.exists(temp_segment_record.temp_video_path):
-                                os.remove(temp_segment_record.temp_video_path)
-                                logger.debug(f'删除临时文件: {temp_segment_record.temp_video_path}')
+                            temp_video_abs_path = temp_segment_record.get_absolute_temp_video_path()
+                            if os.path.exists(temp_video_abs_path):
+                                os.remove(temp_video_abs_path)
+                                logger.debug(f'删除临时文件: {temp_video_abs_path}')
                         except Exception as e:
                             logger.warning(f'删除临时文件失败: {str(e)}')
                         
