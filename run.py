@@ -10,6 +10,7 @@ sys.path.insert(0, str(project_root))
 from app import create_app
 from app.utils.database import init_db
 from app.utils.logger import get_logger
+from app.utils.migrations import run_migrations
 from config import DevelopmentConfig, ProductionConfig
 
 logger = get_logger(__name__)
@@ -37,6 +38,13 @@ def main():
             logger.info('数据库初始化完成')
         except Exception as e:
             logger.warning(f'数据库初始化跳过(可能已存在): {str(e)}')
+        
+        # 执行数据库迁移
+        try:
+            run_migrations()
+            logger.info('数据库迁移完成')
+        except Exception as e:
+            logger.error(f'数据库迁移异常: {str(e)}', exc_info=True)
     
     # 启动应用
     logger.info('启动Flask应用...')

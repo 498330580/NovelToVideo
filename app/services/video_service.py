@@ -615,7 +615,7 @@ class VideoService:
         try:
             optimizer = get_optimizer()
             optimal_params = optimizer.get_optimal_params(fps=fps, bitrate=bitrate, resolution=resolution)
-            logger.info(f'创建视频片段优化参数: codec={optimal_params["codec"]}, preset={optimal_params["preset"]}, threads={optimal_params["threads"]}')
+            logger.debug(f'创建视频片段优化参数: codec={optimal_params["codec"]}, preset={optimal_params["preset"]}, threads={optimal_params["threads"]}')
             # 刷新日志处理器，确保日志立即输出
             for handler in logger.handlers:
                 if hasattr(handler, 'flush'):
