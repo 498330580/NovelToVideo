@@ -82,6 +82,12 @@ class VideoService:
             FileHandler.ensure_dir(temp_image_dir)
             FileHandler.ensure_dir(temp_video_dir)
             
+            # 检查磁盘空间是否足够
+            if not VideoService._check_disk_space(segments, temp_video_dir):
+                error_msg = '磁盘空间不足，无法生成视频'
+                Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                return False, error_msg
+            
             # 生成背景图片
             background_image = VideoService._generate_background_image(
                 project.name,
@@ -146,6 +152,39 @@ class VideoService:
             if project:
                 Project.update_status(project_id, Project.STATUS_FAILED)
             return False, str(e)
+    
+    @staticmethod
+    def _check_disk_space(segments, temp_dir):
+        """
+        检查磁盘空间是否足够
+        
+        Args:
+            segments: 音频段落列表
+            temp_dir: 临时目录路径
+            
+        Returns:
+            bool: 是否有足够的磁盘空间
+        """
+        try:
+            # 估算所需空间：假设每个音频段落生成的视频大约是音频的3倍大小
+            estimated_size = 0
+            for segment in segments:
+                audio_path = segment.get_absolute_audio_path()
+                if os.path.exists(audio_path):
+                    audio_size = os.path.getsize(audio_path)
+                    estimated_size += audio_size * 3  # 视频大约是音频的3倍
+            
+            # 检查临时目录可用空间
+            stat = os.statvfs(temp_dir) if hasattr(os, 'statvfs') else None
+            if stat:
+                free_space = stat.f_frsize * stat.f_bavail
+                return free_space > estimated_size * 2  # 需要至少2倍的估计空间
+            
+            # 如果无法检查磁盘空间，则假设有足够空间
+            return True
+        except Exception as e:
+            logger.warning(f'检查磁盘空间时出错: {str(e)}')
+            return True  # 出错时继续执行，但记录警告
     
     @staticmethod
     def _generate_background_image(project_name, config, temp_image_dir):
@@ -256,6 +295,13 @@ class VideoService:
         pil_image = None
         
         try:
+            # 检查输入文件是否存在
+            if not os.path.exists(audio_path):
+                raise FileNotFoundError(f"音频文件不存在: {audio_path}")
+            
+            if not os.path.exists(image_path):
+                raise FileNotFoundError(f"图片文件不存在: {image_path}")
+            
             # 加载音频
             audio_clip = AudioFileClip(audio_path)
             duration = audio_clip.duration
@@ -275,6 +321,10 @@ class VideoService:
             # 设置音频
             video_clip = image_clip.set_audio(audio_clip)
             
+            # 确保输出目录存在
+            output_dir = os.path.dirname(output_path)
+            FileHandler.ensure_dir(output_dir)
+            
             # 立即保存到文件
             video_clip.write_videofile(
                 output_path,
@@ -284,7 +334,8 @@ class VideoService:
                 audio_codec='aac',
                 temp_audiofile=output_path.replace('.mp4', '_temp.m4a'),
                 remove_temp=True,
-                logger=None
+                logger=None,
+                threads=1  # 限制线程数以减少内存使用
             )
             
         except MemoryError as e:
@@ -341,6 +392,13 @@ class VideoService:
         pil_image = None
         
         try:
+            # 检查输入文件是否存在
+            if not os.path.exists(audio_path):
+                raise FileNotFoundError(f"音频文件不存在: {audio_path}")
+            
+            if not os.path.exists(image_path):
+                raise FileNotFoundError(f"图片文件不存在: {image_path}")
+            
             # 加载音频
             audio_clip = AudioFileClip(audio_path)
             duration = audio_clip.duration
@@ -424,8 +482,12 @@ class VideoService:
             # 1. 从临时文件读取视频片段
             for temp_file in temp_segment_files:
                 if os.path.exists(temp_file):
-                    clip = VideoFileClip(temp_file)
-                    video_clips.append(clip)
+                    try:
+                        clip = VideoFileClip(temp_file)
+                        video_clips.append(clip)
+                    except Exception as e:
+                        logger.warning(f'加载临时视频文件失败: {temp_file}, 错误: {str(e)}')
+                        # 继续处理其他文件
                 else:
                     logger.warning(f'临时视频文件不存在: {temp_file}')
             
@@ -453,7 +515,8 @@ class VideoService:
                 audio_codec='aac',
                 temp_audiofile=os.path.join(temp_video_dir, 'temp_audio_merge.m4a'),
                 remove_temp=True,
-                logger=None
+                logger=None,
+                threads=1  # 限制线程数以减少内存使用
             )
             
             # 4. 释放内存中的完整视频对象
@@ -514,7 +577,8 @@ class VideoService:
                         audio_codec='aac',
                         temp_audiofile=os.path.join(temp_video_dir, f'temp_audio_{i}.m4a'),
                         remove_temp=True,
-                        logger=None
+                        logger=None,
+                        threads=1  # 限制线程数以减少内存使用
                     )
                 finally:
                     # 确保释放片段资源
