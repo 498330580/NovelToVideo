@@ -249,6 +249,12 @@ class VideoService:
         fps = config.get('fps', DefaultConfig.DEFAULT_FPS)
         bitrate = config.get('bitrate', DefaultConfig.DEFAULT_BITRATE)
         
+        # 初始化资源变量
+        audio_clip = None
+        image_clip = None
+        video_clip = None
+        pil_image = None
+        
         try:
             # 加载音频
             audio_clip = AudioFileClip(audio_path)
@@ -261,7 +267,6 @@ class VideoService:
             
             # 转换为numpy数组
             image_array = np.array(pil_image)
-            pil_image.close()
             
             # 创建ImageClip
             image_clip = ImageClip(image_array, duration=duration)
@@ -282,16 +287,34 @@ class VideoService:
                 logger=None
             )
             
-            # 立即关闭释放内存
-            video_clip.close()
-            audio_clip.close()
-            
         except MemoryError as e:
             logger.error(f'创建视频片段时内存不足: audio_path={audio_path}, error={str(e)}')
             raise
         except Exception as e:
             logger.error(f'创建视频片段失败: audio_path={audio_path}, error={str(e)}')
             raise
+        finally:
+            # 确保释放所有资源
+            try:
+                if video_clip:
+                    video_clip.close()
+            except:
+                pass
+            try:
+                if audio_clip:
+                    audio_clip.close()
+            except:
+                pass
+            try:
+                if image_clip:
+                    image_clip.close()
+            except:
+                pass
+            try:
+                if pil_image:
+                    pil_image.close()
+            except:
+                pass
     
     @staticmethod
     def _create_video_clip(audio_path, image_path, config):
@@ -313,6 +336,10 @@ class VideoService:
         
         fps = config.get('fps', DefaultConfig.DEFAULT_FPS)
         
+        # 初始化资源变量
+        audio_clip = None
+        pil_image = None
+        
         try:
             # 加载音频
             audio_clip = AudioFileClip(audio_path)
@@ -327,7 +354,6 @@ class VideoService:
             
             # 转换为 numpy 数组
             image_array = np.array(pil_image)
-            pil_image.close()  # 立即关闭 PIL 图像以释放内存
             
             # 从 numpy 数组创建 ImageClip（这样可以避免 imageio 的内存溢出问题）
             image_clip = ImageClip(image_array, duration=duration)
@@ -344,6 +370,18 @@ class VideoService:
         except Exception as e:
             logger.error(f'创建视频片段失败: audio_path={audio_path}, error={str(e)}')
             raise
+        finally:
+            # 确保释放资源
+            try:
+                if audio_clip:
+                    audio_clip.close()
+            except:
+                pass
+            try:
+                if pil_image:
+                    pil_image.close()
+            except:
+                pass
     
     @staticmethod
     def _merge_temp_videos_and_split(project_id, temp_segment_files, config, temp_video_dir,
@@ -377,9 +415,13 @@ class VideoService:
         
         logger.info(f'开始合并 {len(temp_segment_files)} 个临时视频片段...')
         
-        # 1. 从临时文件读取视频片段
+        # 初始化资源变量
         video_clips = []
+        full_video = None
+        full_video_from_file = None
+        
         try:
+            # 1. 从临时文件读取视频片段
             for temp_file in temp_segment_files:
                 if os.path.exists(temp_file):
                     clip = VideoFileClip(temp_file)
@@ -415,9 +457,13 @@ class VideoService:
             )
             
             # 4. 释放内存中的完整视频对象
-            full_video.close()
+            if full_video:
+                full_video.close()
             for clip in video_clips:
-                clip.close()
+                try:
+                    clip.close()
+                except:
+                    pass
             video_clips = []
             
             logger.info('完整视频已保存，开始分片处理...')
@@ -454,20 +500,29 @@ class VideoService:
                         logger.warning(f'删除旧视频片段失败: {output_filename}, 错误: {str(e)}')
                 
                 # 截取片段
-                segment_clip = full_video_from_file.subclip(start_time, end_time)
-                
-                # 导出视频
-                logger.info(f'开始导出视频片段 ({i+1}/{num_segments}): {output_filename}')
-                segment_clip.write_videofile(
-                    output_file,
-                    fps=fps,
-                    codec='libx264',
-                    bitrate=bitrate,
-                    audio_codec='aac',
-                    temp_audiofile=os.path.join(temp_video_dir, f'temp_audio_{i}.m4a'),
-                    remove_temp=True,
-                    logger=None
-                )
+                segment_clip = None
+                try:
+                    segment_clip = full_video_from_file.subclip(start_time, end_time)
+                    
+                    # 导出视频
+                    logger.info(f'开始导出视频片段 ({i+1}/{num_segments}): {output_filename}')
+                    segment_clip.write_videofile(
+                        output_file,
+                        fps=fps,
+                        codec='libx264',
+                        bitrate=bitrate,
+                        audio_codec='aac',
+                        temp_audiofile=os.path.join(temp_video_dir, f'temp_audio_{i}.m4a'),
+                        remove_temp=True,
+                        logger=None
+                    )
+                finally:
+                    # 确保释放片段资源
+                    if segment_clip:
+                        try:
+                            segment_clip.close()
+                        except:
+                            pass
                 
                 # 检查数据库中是否已记录该片段
                 existing_segment = VideoSegment.get_by_project_and_index(project_id, i)
@@ -485,8 +540,6 @@ class VideoService:
                 else:
                     VideoSegment.update_status(existing_segment.id, VideoSegment.STATUS_COMPLETED)
                 
-                segment_clip.close()
-                
                 # 更新进度（第二阶段50%）
                 progress = 50 + (i + 1) / num_segments * 50
                 Task.update_progress(task_id, progress)
@@ -494,7 +547,8 @@ class VideoService:
                 logger.info(f'视频片段导出成功: {output_filename}')
             
             # 6. 关闭临时视频文件
-            full_video_from_file.close()
+            if full_video_from_file:
+                full_video_from_file.close()
             
             # 7. 删除临时文件
             logger.info('开始清理临时文件...')
@@ -505,18 +559,36 @@ class VideoService:
                     logger.info('删除临时完整视频文件')
                 
                 # 删除所有视频片段临时文件
+                deleted_count = 0
                 for temp_file in temp_segment_files:
                     if os.path.exists(temp_file):
-                        os.remove(temp_file)
-                logger.info(f'删除 {len(temp_segment_files)} 个视频片段临时文件')
+                        try:
+                            os.remove(temp_file)
+                            deleted_count += 1
+                        except Exception as e:
+                            logger.warning(f'删除临时视频片段失败: {temp_file}, 错误: {str(e)}')
+                logger.info(f'删除 {deleted_count}/{len(temp_segment_files)} 个视频片段临时文件')
                 
             except Exception as e:
                 logger.warning(f'清理临时文件失败: {str(e)}')
             
             logger.info('所有视频片段导出完成')
             
+        except Exception as e:
+            logger.error(f'合并和分片视频时发生错误: {str(e)}', exc_info=True)
+            raise
         finally:
             # 确保释放所有资源
+            try:
+                if full_video:
+                    full_video.close()
+            except:
+                pass
+            try:
+                if full_video_from_file:
+                    full_video_from_file.close()
+            except:
+                pass
             for clip in video_clips:
                 try:
                     clip.close()

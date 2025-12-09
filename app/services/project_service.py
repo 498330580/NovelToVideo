@@ -130,12 +130,15 @@ class ProjectService:
             # 删除项目相关的自定义背景图片
             if project.config and isinstance(project.config, dict):
                 custom_background_path = project.config.get('custom_background_path')
-                if custom_background_path and os.path.exists(custom_background_path):
-                    try:
-                        os.remove(custom_background_path)
-                        logger.info(f'删除自定义背景图片: {custom_background_path}')
-                    except Exception as e:
-                        logger.warning(f'删除自定义背景图片失败: {custom_background_path}, 错误: {str(e)}')
+                if custom_background_path:
+                    # 检查路径是否存在且在项目目录内，避免删除系统文件
+                    if os.path.exists(custom_background_path) and \
+                       DefaultConfig.TEMP_IMAGE_DIR in custom_background_path:
+                        try:
+                            os.remove(custom_background_path)
+                            logger.info(f'删除自定义背景图片: {custom_background_path}')
+                        except Exception as e:
+                            logger.warning(f'删除自定义背景图片失败: {custom_background_path}, 错误: {str(e)}')
             
             # 删除数据库记录(会级联删除相关的段落、视频片段和任务)
             Project.delete(project_id)
@@ -247,6 +250,7 @@ class ProjectService:
             project.config = config
             
             # 更新数据库中的配置
+            from app.utils.database import execute_query
             query = 'UPDATE projects SET config_json = ? WHERE id = ?'
             execute_query(query, (project.config_json, project_id), fetch=False)
             
