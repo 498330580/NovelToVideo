@@ -16,7 +16,7 @@ class TextSegment:
     
     def __init__(self, id=None, project_id=None, segment_index=None, content=None,
                  word_count=None, chapter_title=None, audio_status=AUDIO_STATUS_PENDING,
-                 audio_path=None, created_at=None):
+                 audio_path=None, audio_duration=None, created_at=None):
         self.id = id
         self.project_id = project_id
         self.segment_index = segment_index
@@ -25,6 +25,7 @@ class TextSegment:
         self.chapter_title = chapter_title
         self.audio_status = audio_status
         self.audio_path = audio_path
+        self.audio_duration = audio_duration
         self.created_at = created_at
     
     @classmethod
@@ -147,7 +148,7 @@ class TextSegment:
         return [cls._from_row(row) for row in rows]
     
     @classmethod
-    def update_audio_status(cls, segment_id, status, audio_path=None):
+    def update_audio_status(cls, segment_id, status, audio_path=None, audio_duration=None):
         """
         更新音频状态
         
@@ -155,8 +156,18 @@ class TextSegment:
             segment_id: 段落ID
             status: 新状态
             audio_path: 音频文件路径（支持绝对路径或相对路径，会自动转换为相对路径保存）
+            audio_duration: 音频时长（秒）
         """
-        if audio_path:
+        if audio_path and audio_duration is not None:
+            # 转换为相对路径后保存
+            relative_path = cls.convert_to_relative_path(audio_path)
+            query = '''
+                UPDATE text_segments 
+                SET audio_status = ?, audio_path = ?, audio_duration = ?
+                WHERE id = ?
+            '''
+            execute_query(query, (status, relative_path, audio_duration, segment_id), fetch=False)
+        elif audio_path:
             # 转换为相对路径后保存
             relative_path = cls.convert_to_relative_path(audio_path)
             query = '''
@@ -165,6 +176,14 @@ class TextSegment:
                 WHERE id = ?
             '''
             execute_query(query, (status, relative_path, segment_id), fetch=False)
+        elif audio_duration is not None:
+            # 只更新时长
+            query = '''
+                UPDATE text_segments 
+                SET audio_status = ?, audio_duration = ?
+                WHERE id = ?
+            '''
+            execute_query(query, (status, audio_duration, segment_id), fetch=False)
         else:
             query = '''
                 UPDATE text_segments 
@@ -275,6 +294,7 @@ class TextSegment:
             chapter_title=get('chapter_title'),
             audio_status=get('audio_status', cls.AUDIO_STATUS_PENDING),
             audio_path=get('audio_path'),
+            audio_duration=get('audio_duration'),
             created_at=get('created_at')
         )
     
@@ -361,5 +381,6 @@ class TextSegment:
             'chapter_title': self.chapter_title,
             'audio_status': self.audio_status,
             'audio_path': self.audio_path,
+            'audio_duration': self.audio_duration,
             'created_at': self.created_at
         }

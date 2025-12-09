@@ -173,11 +173,23 @@ class TTSService:
                 
                 # 验证文件是否生成
                 if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
-                    # 更新状态为已完成
+                    # 读取音频时长
+                    try:
+                        from moviepy.editor import AudioFileClip
+                        audio_clip = AudioFileClip(audio_path)
+                        duration = audio_clip.duration
+                        audio_clip.close()
+                        logger.info(f'音频时长: {duration:.2f}秒')
+                    except Exception as e:
+                        logger.warning(f'读取音频时长失败: {str(e)}')
+                        duration = None
+                    
+                    # 更新状态为已完成，并保存时长
                     TextSegment.update_audio_status(
                         segment.id,
                         TextSegment.AUDIO_STATUS_COMPLETED,
-                        audio_path
+                        audio_path,
+                        audio_duration=duration
                     )
                     logger.info(f'段落语音合成成功: segment_id={segment.id}')
                     return
