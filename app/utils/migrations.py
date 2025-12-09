@@ -188,6 +188,118 @@ def _migration_003_output_paths_to_relative():
         return False
 
 
+
+def _migration_004_create_temp_video_segments_table():
+    """
+    迁移004：创建 temp_video_segments 表
+    于中间视频片段，清理不重复吹中输出孤立文件
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 检查表是否已存在
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='temp_video_segments'")
+        if cursor.fetchone():
+            logger.info("迁移004: temp_video_segments 表已存在，跳过")
+            conn.close()
+            return True
+        
+        logger.info("迁移004: 开始创建 temp_video_segments 表...")
+        
+        cursor.execute("""
+            CREATE TABLE temp_video_segments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                text_segment_id INTEGER NOT NULL,
+                temp_video_path TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE,
+                FOREIGN KEY (text_segment_id) REFERENCES text_segments (id) ON DELETE CASCADE
+            )
+        """)
+        logger.info("迁移004: 成功创建 temp_video_segments 表")
+        
+        # 创建索引
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_temp_video_segments_project_id 
+            ON temp_video_segments(project_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_temp_video_segments_status 
+            ON temp_video_segments(status)
+        """)
+        logger.info("迁移004: 成功创建索引")
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info("迁移004: 完成！中间视频正常跟踪")
+        return True
+        
+    except Exception as e:
+        logger.error(f"迁移004失败: {str(e)}", exc_info=True)
+        return False
+
+
+def _migration_005_create_video_synthesis_queue_table():
+    """
+    迁移005：创建 video_synthesis_queue 表
+    于视频合成队列，断点续传和进度跟踪
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 检查表是否已存在
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='video_synthesis_queue'")
+        if cursor.fetchone():
+            logger.info("迁移005: video_synthesis_queue 表已存在，跳过")
+            conn.close()
+            return True
+        
+        logger.info("迁移005: 开始创建 video_synthesis_queue 表...")
+        
+        cursor.execute("""
+            CREATE TABLE video_synthesis_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                video_index INTEGER NOT NULL,
+                output_video_path TEXT NOT NULL,
+                temp_segment_ids TEXT NOT NULL,
+                total_duration REAL NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+            )
+        """)
+        logger.info("迁移005: 成功创建 video_synthesis_queue 表")
+        
+        # 创建索引
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_video_synthesis_queue_project_id 
+            ON video_synthesis_queue(project_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_video_synthesis_queue_status 
+            ON video_synthesis_queue(status)
+        """)
+        logger.info("迁移005: 成功创建索引")
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info("迁移005: 完成！视频合成队列正常工作")
+        return True
+        
+    except Exception as e:
+        logger.error(f"迁移005失败: {str(e)}", exc_info=True)
+        return False
+
+
 def _get_migration_version():
     """
     获取数据库当前的迁移版本
@@ -285,6 +397,8 @@ def run_migrations():
             1: (_migration_001_add_audio_duration, "为 text_segments 表添加 audio_duration 字段"),
             2: (_migration_002_audio_paths_to_relative, "将 text_segments 表中的 audio_path 转换为相对路径"),
             3: (_migration_003_output_paths_to_relative, "将 projects 表中的 output_path 转换为相对路径"),
+            4: (_migration_004_create_temp_video_segments_table, "创建 temp_video_segments 表"),
+            5: (_migration_005_create_video_synthesis_queue_table, "创建 video_synthesis_queue 表"),
         }
         
         # 按版本顺序执行迁移
