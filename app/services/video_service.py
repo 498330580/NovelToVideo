@@ -179,6 +179,9 @@ class VideoService:
             
             logger.info(f'开始收集音频时长信息...')
             
+            # 第零步：清理临时目录中的孤立文件（断点续传时的残留）
+            VideoService._cleanup_orphaned_temp_files(temp_video_dir)
+            
             for segment in segments:
                 try:
                     # 优先从数据库读取时长
@@ -256,8 +259,8 @@ class VideoService:
                 existing_video = VideoSegment.get_by_project_and_index(project_id, video_index - 1)
                 
                 if existing_video and existing_video.status == VideoSegment.STATUS_COMPLETED:
-                    # 视频已完成，检查文件是否存在
-                    if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                    # 视频已完成，检查文件是否有效
+                    if VideoService._validate_output_file_integrity(output_file):
                         logger.info(f'视频 {video_index} 已完成（断点续传），正常跳过: {output_filename}')
                         # 标记这些音频为已合成
                         synthesized_segment_ids.update(selected_ids)
@@ -266,7 +269,7 @@ class VideoService:
                         Task.update_progress(task_id, progress)
                         continue
                     else:
-                        logger.warning(f'视频 {video_index} 预期为COMPLETED但视频文件不存在，重新源董: {output_filename}')
+                        logger.warning(f'视频 {video_index} 标记为COMPLETED但文件不完整，重新生成: {output_filename}')
                 
                 # 第二步：为这批音频生成临时视频
                 temp_video_files = []
@@ -344,6 +347,77 @@ class VideoService:
             
         except Exception as e:
             logger.error(f'按时长分组合成视频失败: {str(e)}', exc_info=True)
+            return False
+    
+    @staticmethod
+    def _cleanup_orphaned_temp_files(temp_video_dir):
+        """
+        清理临时目录中的孤立文件
+        
+        异常中断时，临时目录可能残留：
+        - 未完成的视频片段（segment_*.mp4）
+        - 音频临时文件（*.m4a）
+        这些文件会被清理，重新启动时重新生成
+        
+        Args:
+            temp_video_dir: 临时视频目录
+        """
+        if not os.path.exists(temp_video_dir):
+            return
+        
+        try:
+            cleaned_count = 0
+            for filename in os.listdir(temp_video_dir):
+                file_path = os.path.join(temp_video_dir, filename)
+                # 清理所有临时文件（segment_*.mp4 和 *.m4a）
+                if filename.startswith('segment_') or filename.endswith('.m4a'):
+                    try:
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                            cleaned_count += 1
+                    except Exception as e:
+                        logger.warning(f'清理临时文件失败: {filename}, 错误: {str(e)}')
+            
+            if cleaned_count > 0:
+                logger.info(f'清理了 {cleaned_count} 个孤立的临时文件（异常中断的残留）')
+        except Exception as e:
+            logger.warning(f'清理临时目录失败: {str(e)}')
+    
+    @staticmethod
+    def _validate_output_file_integrity(output_file):
+        """
+        验证输出视频文件的完整性
+        
+        检查项：
+        1. 文件是否存在
+        2. 文件大小是否大于0
+        3. 文件是否是有效的视频（验证時長）
+        
+        Args:
+            output_file: 视频文件路径
+            
+        Returns:
+            True 如果文件有效，False 否则
+        """
+        if not os.path.exists(output_file):
+            return False
+        
+        if os.path.getsize(output_file) == 0:
+            logger.warning(f'输出文件大小为0: {output_file}')
+            return False
+        
+        # 验证视频時長是否有效（通过尝试打开）
+        try:
+            from moviepy.editor import VideoFileClip
+            clip = VideoFileClip(output_file)
+            duration = clip.duration
+            clip.close()
+            if duration <= 0:
+                logger.warning(f'输出视频時長不有效: {output_file}, duration={duration}')
+                return False
+            return True
+        except Exception as e:
+            logger.warning(f'输出视频文件验证失败（可能不完整）: {output_file}, 错误: {str(e)}')
             return False
     
     @staticmethod
