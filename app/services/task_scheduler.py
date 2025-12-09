@@ -163,8 +163,21 @@ class TaskScheduler:
                 success, error = TTSService.synthesize_project(project_id)
             
             if success:
-                logger.info(f'语音合成任务完成: 项目ID={project_id}')
-                # 自动提交视频生成任务
+                logger.info(f'语音合成任务完成: 项目 ID={project_id}')
+                            
+                # 第一步: 自动生成视频合成队列
+                logger.info(f'开始自动生成视频合成队列: 项目 ID={project_id}')
+                try:
+                    from app.services.video_service import VideoService
+                    queue_success = VideoService.generate_and_save_queue(project_id)
+                    if queue_success:
+                        logger.info(f'视频合成队列生成成功: 项目 ID={project_id}')
+                    else:
+                        logger.warning(f'视频合成队列生成失败: 项目 ID={project_id}')
+                except Exception as e:
+                    logger.error(f'自动生成队列异常: 项目 ID={project_id}, {str(e)}', exc_info=True)
+                            
+                # 第二步: 自动提交视频生成任务1
                 TaskScheduler.submit_video_task(project_id)
             else:
                 logger.error(f'语音合成任务失败: 项目ID={project_id}, 错误: {error}')
