@@ -497,11 +497,8 @@ class VideoService:
                     
                     logger.info(f'视频 video_{video_index} 算法完成')
                     
-                    # 第四步：更新是否是 merged 並删除临时文件
+                    # 第四步：更新为 merged 並删除临时文件
                     for temp_segment_record in temp_segment_records:
-                        # 更新为 merged
-                        TempVideoSegment.update_status(temp_segment_record.id, TempVideoSegment.STATUS_MERGED)
-                        
                         # 删除临时视频文件
                         try:
                             if os.path.exists(temp_segment_record.temp_video_path):
@@ -509,6 +506,12 @@ class VideoService:
                                 logger.debug(f'删除临时文件: {temp_segment_record.temp_video_path}')
                         except Exception as e:
                             logger.warning(f'删除临时文件失败: {str(e)}')
+                        
+                        # 更新为 merged（文件已合成到最终视频）
+                        TempVideoSegment.update_status(temp_segment_record.id, TempVideoSegment.STATUS_MERGED)
+                        
+                        # 最后标记为 deleted（文件已删除）
+                        TempVideoSegment.update_status(temp_segment_record.id, TempVideoSegment.STATUS_DELETED)
                     
                     # 第五步：更新队列状态
                     VideoSynthesisQueue.update_status(queue_id, VideoSynthesisQueue.STATUS_COMPLETED)
