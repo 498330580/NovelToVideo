@@ -217,9 +217,20 @@ class VideoService:
             # 确保输出目录存在
             FileHandler.ensure_dir(output_path)
             
-            # 标记已合成的音频ID
+            # 实现断点续传：检查数据库中已完成的视频段落，恢复上次执行的程
+            from app.models.video_segment import VideoSegment
+            completed_video_segments = VideoSegment.get_by_project(project_id)
+            completed_indices = set([seg.segment_index for seg in completed_video_segments 
+                                     if seg.status == VideoSegment.STATUS_COMPLETED])
+            
+            # 检查是否有上次未完成的任务1
+            # 仅处理已完成的视频，不处理未完成或失败的视频
             synthesized_segment_ids = set()
-            video_index = 1
+            if completed_indices:
+                logger.info(f'检测到已有 {len(completed_indices)} 个已完成的视频段落 (video_1 ~ video_{max(completed_indices)})'
+                          f'，开始断点续传...')
+            
+            video_index = max(completed_indices) + 1 if completed_indices else 1
             total_segments = len(segments)
             
             while len(synthesized_segment_ids) < total_segments:
@@ -238,6 +249,24 @@ class VideoService:
                 selected_ids = [seg.id for seg in selected_segments]
                 selected_duration = sum(segment_durations[seg_id] for seg_id in selected_ids)
                 logger.info(f'视频 {video_index}: 选择 {len(selected_segments)} 个音频段落，总时长: {selected_duration:.2f}秒')
+                
+                # 检查此视频是否已经完成，如果完成则跳过
+                output_filename = f'{safe_name}_{video_index}.{video_format}'
+                output_file = os.path.join(output_path, output_filename)
+                existing_video = VideoSegment.get_by_project_and_index(project_id, video_index - 1)
+                
+                if existing_video and existing_video.status == VideoSegment.STATUS_COMPLETED:
+                    # 视频已完成，检查文件是否存在
+                    if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                        logger.info(f'视频 {video_index} 已完成（断点续传），正常跳过: {output_filename}')
+                        # 标记这些音频为已合成
+                        synthesized_segment_ids.update(selected_ids)
+                        video_index += 1
+                        progress = len(synthesized_segment_ids) / total_segments * 100
+                        Task.update_progress(task_id, progress)
+                        continue
+                    else:
+                        logger.warning(f'视频 {video_index} 预期为COMPLETED但视频文件不存在，重新源董: {output_filename}')
                 
                 # 第二步：为这批音频生成临时视频
                 temp_video_files = []
