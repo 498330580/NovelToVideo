@@ -223,6 +223,7 @@
 <script>
 let autoRefreshInterval = null;
 let autoRefreshEnabled = false;
+const AUTO_REFRESH_KEY = 'videoQueueAutoRefresh_{{ project.id }}';
 
 document.addEventListener('DOMContentLoaded', function() {
     // 设置进度条宽度
@@ -239,6 +240,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // 加载预览信息
     loadVideoPreview();
     
+    // 恢复自动刷新状态
+    restoreAutoRefreshState();
+    
     // 绑定按钮事件
     document.getElementById('btnRefreshQueue').addEventListener('click', function() {
         this.disabled = true;
@@ -250,6 +254,15 @@ document.addEventListener('DOMContentLoaded', function() {
         toggleAutoRefresh();
     });
 });
+
+// 恢复自动刷新状态
+function restoreAutoRefreshState() {
+    const savedState = localStorage.getItem(AUTO_REFRESH_KEY);
+    if (savedState === 'enabled') {
+        autoRefreshEnabled = true;
+        startAutoRefresh();
+    }
+}
 
 // 加载视频预览信息
 async function loadVideoPreview() {
@@ -283,6 +296,19 @@ async function loadVideoPreview() {
     }
 }
 
+// 启动自动刷新
+function startAutoRefresh() {
+    const btn = document.getElementById('btnAutoRefresh');
+    btn.textContent = '⏱️ 自动刷新 (开)';
+    btn.classList.remove('btn-secondary');
+    btn.classList.add('btn-primary');
+    
+    // 每3秒自动刷新
+    autoRefreshInterval = setInterval(() => {
+        location.reload();
+    }, 3000);
+}
+
 // 切换自动刷新
 function toggleAutoRefresh() {
     const btn = document.getElementById('btnAutoRefresh');
@@ -291,20 +317,15 @@ function toggleAutoRefresh() {
         // 关闭自动刷新
         clearInterval(autoRefreshInterval);
         autoRefreshEnabled = false;
+        localStorage.setItem(AUTO_REFRESH_KEY, 'disabled');
         btn.textContent = '⏱️ 自动刷新 (关)';
         btn.classList.remove('btn-primary');
         btn.classList.add('btn-secondary');
     } else {
         // 启用自动刷新
         autoRefreshEnabled = true;
-        btn.textContent = '⏱️ 自动刷新 (开)';
-        btn.classList.remove('btn-secondary');
-        btn.classList.add('btn-primary');
-        
-        // 每3秒自动刷新
-        autoRefreshInterval = setInterval(() => {
-            location.reload();
-        }, 3000);
+        localStorage.setItem(AUTO_REFRESH_KEY, 'enabled');
+        startAutoRefresh();
     }
 }
 </script>
