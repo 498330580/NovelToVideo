@@ -339,3 +339,69 @@ def view_video_queue(project_id):
         logger.error(f'查看视频队列失败: {str(e)}', exc_info=True)
         flash(f'查看视频队列失败: {str(e)}', 'error')
         return redirect(url_for('project.detail', project_id=project_id))
+
+
+@project_bp.route('/<int:project_id>/video-preview')
+def video_preview(project_id):
+    """获取视频生成预览信息（API）"""
+    try:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            return jsonify({'success': False, 'error': '项目不存在'}), 404
+        
+        # 获取项目配置
+        config = project.config if isinstance(project.config, dict) else {}
+        segment_duration = config.get('segment_duration', 600)
+        
+        # 获取已完成的音频段落
+        from app.models.text_segment import TextSegment
+        completed_segments = TextSegment.get_completed_segments(project_id)
+        
+        # 获取已有的视频队列
+        from app.models.video_synthesis_queue import VideoSynthesisQueue
+        existing_queues = VideoSynthesisQueue.get_by_project(project_id)
+        
+        if existing_queues:
+            # 如果已有队列，返回实际数据
+            total_queue_count = len(existing_queues)
+            total_duration = sum(q.total_duration for q in existing_queues)
+            estimated_time_minutes = int(total_duration / 60) if total_duration else 0
+            estimated_disk_space_mb = int(total_queue_count * 100)  # 粗略估计每个视频100MB
+            message = '已有生成队列数据，显示实际数据'
+        else:
+            # 若无队列，根据音频计算预估值
+            if not completed_segments:
+                return jsonify({
+                    'success': True,
+                    'data': {
+                        'total_queue_count': 0,
+                        'total_duration': 0,
+                        'segment_duration': segment_duration,
+                        'estimated_time_minutes': 0,
+                        'estimated_disk_space_mb': 0,
+                        'preview_available': False
+                    }
+                })
+            
+            # 计算预估队列数
+            total_audio_duration = sum(s.audio_duration for s in completed_segments if s.audio_duration)
+            total_queue_count = max(1, int(total_audio_duration / segment_duration))
+            estimated_time_minutes = int(total_audio_duration / 60) if total_audio_duration else 0
+            estimated_disk_space_mb = int(total_queue_count * 100)  # 粗略估计每个视频100MB
+            message = '预估数据，基于已完成的音频段落计算'
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_queue_count': total_queue_count,
+                'total_duration': total_duration if existing_queues else (sum(s.audio_duration for s in completed_segments if s.audio_duration) or 0),
+                'segment_duration': segment_duration,
+                'estimated_time_minutes': estimated_time_minutes,
+                'estimated_disk_space_mb': estimated_disk_space_mb,
+                'preview_available': True,
+                'message': message
+            }
+        })
+    except Exception as e:
+        logger.error(f'获取视频预览失败: {str(e)}', exc_info=True)
+        return jsonify({'success': False, 'error': f'获取预览失败: {str(e)}'}), 500
