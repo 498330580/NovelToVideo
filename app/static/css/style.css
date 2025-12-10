@@ -498,6 +498,12 @@ navbar.navbar-dark,
     color: white;
 }
 
+.badge-synthesizing {
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    color: white;
+    animation: pulse 2s infinite;
+}
+
 .badge-processing,
 .badge-running {
     background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
@@ -959,6 +965,12 @@ hr {
 .badge-pending {
     background-color: #f39c12;
     color: white;
+}
+
+.badge-synthesizing {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    animation: pulse 2s infinite;
 }
 
 .badge-processing,
