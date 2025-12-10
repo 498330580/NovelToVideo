@@ -314,10 +314,21 @@ def view_video_queue(project_id):
         synthesizing_count = len([q for q in queues if q.status == VideoSynthesisQueue.STATUS_SYNTHESIZING])
         total_duration = sum(q.total_duration for q in queues)
         
+        # 计算每个队列的已完成片段数和总片段数
+        from app.models.temp_video_segment import TempVideoSegment
+        queues_with_progress = []
+        for queue in queues:
+            completed_segments = len([s for s in queue.temp_segment_ids if TempVideoSegment.get_by_id(s) and TempVideoSegment.get_by_id(s).status == TempVideoSegment.STATUS_SYNTHESIZED])
+            queues_with_progress.append({
+                'queue': queue,
+                'completed_segments': completed_segments,
+                'total_segments': len(queue.temp_segment_ids)
+            })
+        
         return render_template(
             'video_queue.html',
             project=project,
-            queues=queues,
+            queues=queues_with_progress,
             total_queues=total_queues,
             completed_count=completed_count,
             pending_count=pending_count,

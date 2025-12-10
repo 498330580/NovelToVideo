@@ -13,48 +13,8 @@
     
     {% if queues %}
     <div class="info-card">
-        <h3>队列预览</h3>
-        <div class="table-container">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>队列ID</th>
-                        <th>视频序号</th>
-                        <th>状态</th>
-                        <th>总时长</th>
-                        <th>包含音频数</th>
-                        <th>输出文件</th>
-                        <th>创建时间</th>
-                        <th>更新时间</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for queue in queues %}
-                    <tr>
-                        <td>{{ queue.id }}</td>
-                        <td>{{ queue.video_index }}</td>
-                        <td>
-                            <span class="badge badge-{{ queue.status }}">
-                                {% if queue.status == 'pending' %}待处理
-                                {% elif queue.status == 'synthesizing' %}合成中
-                                {% elif queue.status == 'completed' %}已完成
-                                {% else %}{{ queue.status }}
-                                {% endif %}
-                            </span>
-                        </td>
-                        <td>{{ queue.total_duration | round(2) }} 秒</td>
-                        <td>{{ queue.temp_segment_ids | length }} 个</td>
-                        <td><code>{{ queue.output_video_path }}</code></td>
-                        <td>{{ queue.created_at }}</td>
-                        <td>{{ queue.updated_at or '-' }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        
-        <div class="queue-stats" style="margin-top: 20px;">
-            <h4>队列统计</h4>
+        <h3>队列统计</h3>
+        <div class="queue-stats" style="margin-bottom: 20px;">
             <div class="stats-grid">
                 <div class="stat-item">
                     <div class="stat-value">{{ total_queues }}</div>
@@ -90,6 +50,48 @@
             {% endif %}
         </div>
     </div>
+    
+    <div class="info-card">
+        <h3>队列预览</h3>
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>队列ID</th>
+                        <th>视频序号</th>
+                        <th>状态</th>
+                        <th>总时长</th>
+                        <th>片段进度</th>
+                        <th>输出文件</th>
+                        <th>创建时间</th>
+                        <th>更新时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in queues %}
+                    <tr>
+                        <td>{{ item.queue.id }}</td>
+                        <td>{{ item.queue.video_index }}</td>
+                        <td>
+                            <span class="badge badge-{{ item.queue.status }}">
+                                {% if item.queue.status == 'pending' %}待处理
+                                {% elif item.queue.status == 'synthesizing' %}合成中
+                                {% elif item.queue.status == 'completed' %}已完成
+                                {% else %}{{ item.queue.status }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>{{ item.queue.total_duration | round(2) }} 秒</td>
+                        <td>{{ item.completed_segments }}/{{ item.total_segments }}</td>
+                        <td><code>{{ item.queue.output_video_path }}</code></td>
+                        <td>{{ item.queue.created_at }}</td>
+                        <td>{{ item.queue.updated_at or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
     {% else %}
     <div class="info-card">
         <p>暂无视频合成队列数据。请先点击"生成视频"按钮创建队列。</p>
@@ -97,6 +99,7 @@
     {% endif %}
 </div>
 {% endblock %}
+
 
 {% block scripts %}
 <script>
