@@ -371,14 +371,15 @@ class VideoService:
         try:
             logger.info(f'开始使用队列驱动的视频合成: project_id={project_id}')
             
-            # 从数据库获取所有待处理的队列记录
-            queue_records = VideoSynthesisQueue.get_by_project(project_id)
+            # 从数据库获取所有未完成的队列记录（PENDING 和 SYNTHESIZING），按顺序处理
+            all_queues = VideoSynthesisQueue.get_by_project(project_id)
+            queue_records = [q for q in all_queues if q.status != VideoSynthesisQueue.STATUS_COMPLETED]
             
             if not queue_records:
-                logger.error(f'没有找到视频合成队列: project_id={project_id}')
+                logger.error(f'没有找到待处理的视频合成队列: project_id={project_id}')
                 return False
             
-            logger.info(f'找到 {len(queue_records)} 个待处理的队列记录')
+            logger.info(f'找到 {len(queue_records)} 个待处理的队列记录（已排除已完成的队列）')
             
             # 统计进度
             total_queue = len(queue_records)
@@ -390,17 +391,17 @@ class VideoService:
             for seg in all_segments:
                 segment_map[seg.id] = seg
             
-            # 遍历所有队列记录
+            # 遍历所有队列记录 - 按顺序处理，每个队列处理完毕立即合并
             for queue_record in queue_records:
                 queue_id = queue_record.id
                 video_index = queue_record.video_index
                 temp_segment_ids = queue_record.temp_segment_ids  # TempVideoSegment ID列表
                 total_duration = queue_record.total_duration
                 
-                # 介纻时使用绝对路径
+                # 使用绝对路径
                 output_video_path = queue_record.get_absolute_output_video_path()
                 
-                logger.info(f'处理队列: queue_id={queue_id}, video_index={video_index}, temp_segments={len(temp_segment_ids)}')
+                logger.info(f'开始处理队列: queue_id={queue_id}, video_index={video_index}, temp_segments={len(temp_segment_ids)}')
                 
                 # 如果队列已完成，跳过
                 if queue_record.status == VideoSynthesisQueue.STATUS_COMPLETED:
@@ -414,10 +415,11 @@ class VideoService:
                 VideoSynthesisQueue.update_status(queue_id, VideoSynthesisQueue.STATUS_SYNTHESIZING)
                 
                 try:
-                    # 第一步：为每个临时视频片段生成视频
+                    # 步骤1：为该队列的每个临时视频片段生成视频
                     temp_video_files = []
                     temp_segment_records = []
                     
+                    logger.info(f'步骤1: 生成队列 {queue_id} 的临时视频 (共 {len(temp_segment_ids)} 个)')
                     for temp_segment_id in temp_segment_ids:
                         # 获取 TempVideoSegment 记录
                         temp_seg_record = TempVideoSegment.get_by_id(temp_segment_id)
@@ -433,26 +435,27 @@ class VideoService:
                             continue
                         
                         try:
-                            # 使用绝对路径上下文中的文件
                             temp_video_abs_path = temp_seg_record.get_absolute_temp_video_path()
                             
-                            # 主要逻辑: 查询数据库status，判断是否需要生成
-                            if temp_seg_record.status == TempVideoSegment.STATUS_SYNTHESIZED:
-                                # 已经合成，跳过生成，直接使用现有文件
-                                logger.info(f'临时视频已合成: temp_segment_id={temp_segment_id}, status=synthesized, 跳过生成')
-                                if os.path.exists(temp_video_abs_path) and os.path.getsize(temp_video_abs_path) > 0:
-                                    # 文件存在且大小正常，直接使用
-                                    logger.debug(f'文件正常，使用现有临时文件')
-                                else:
-                                    # 文件缺失或损坏需重新生成
-                                    logger.warning(f'临时文件不存在或损坏，重新生成: {temp_video_abs_path}')
-                                    temp_seg_record.status = TempVideoSegment.STATUS_PENDING
-                                    # 恢复为pending，继续处理（下面的逻辑）
+                            # 判断是否需要生成临时视频
+                            need_generate = False
                             
-                            if temp_seg_record.status == TempVideoSegment.STATUS_PENDING or temp_seg_record.status != TempVideoSegment.STATUS_SYNTHESIZED:
-                                # 未合成或空状态，需要生成
+                            if temp_seg_record.status == TempVideoSegment.STATUS_SYNTHESIZED:
+                                # 已合成，检查文件完整性
+                                if os.path.exists(temp_video_abs_path) and os.path.getsize(temp_video_abs_path) > 0:
+                                    logger.debug(f'临时视频已存在且完好: temp_segment_id={temp_segment_id}')
+                                    need_generate = False
+                                else:
+                                    logger.warning(f'临时视频文件缺失或损坏，需重新生成: {temp_video_abs_path}')
+                                    need_generate = True
+                            else:
+                                # PENDING或其他状态，需要生成
+                                logger.info(f'临时视频需要生成: temp_segment_id={temp_segment_id}, status={temp_seg_record.status}')
+                                need_generate = True
+                            
+                            if need_generate:
                                 audio_abs_path = segment.get_absolute_audio_path()
-                                logger.info(f'生成临时视频: temp_segment_id={temp_segment_id}')
+                                logger.info(f'生成临时视频: temp_segment_id={temp_segment_id}, audio={os.path.basename(audio_abs_path)}')
                                 
                                 VideoService._create_and_save_video_segment(
                                     audio_abs_path,
@@ -461,7 +464,7 @@ class VideoService:
                                     config
                                 )
                             
-                            # 更新状态为 synthesized
+                            # 更新状态为 SYNTHESIZED
                             TempVideoSegment.update_status(temp_segment_id, TempVideoSegment.STATUS_SYNTHESIZED)
                             temp_video_files.append(temp_video_abs_path)
                             temp_segment_records.append(temp_seg_record)
@@ -471,23 +474,24 @@ class VideoService:
                             raise
                     
                     if not temp_video_files:
-                        logger.error(f'没有成功生成临时视频')
+                        logger.error(f'队列 {queue_id} 没有临时视频文件可处理')
                         VideoSynthesisQueue.update_status(queue_id, VideoSynthesisQueue.STATUS_PENDING)
                         continue
                     
-                    # 第二步：合并临时视频
-                    logger.info(f'合并 {len(temp_video_files)} 个视频: video_index={video_index}')
+                    logger.info(f'步骤1 完成: 队列 {queue_id} 的 {len(temp_video_files)} 个临时视频已生成')
                     
-                    # 检查输出文件是否已存在
-                    if os.path.exists(output_video_path) and os.path.getsize(output_video_path) > 0:
+                    # 步骤2：合并该队列的所有临时视频为最终输出视频
+                    logger.info(f'步骤2: 合并队列 {queue_id} 的 {len(temp_video_files)} 个视频 -> {os.path.basename(output_video_path)}')
+                    
+                    # 检查输出文件是否已存在，如果存在则删除
+                    if os.path.exists(output_video_path):
                         try:
                             os.remove(output_video_path)
-                            logger.info(f'删除已存在的输出视频')
+                            logger.info(f'删除已存在的输出视频: {output_video_path}')
                         except Exception as e:
-                            logger.warning(f'删除失败: {str(e)}')
+                            logger.warning(f'删除输出文件失败: {str(e)}')
                     
-                    # 需要或改造_merge_and_save_videos或使用FFmpeg
-                    # 暂时使用旧方法
+                    # 使用 FFmpeg 的 -c copy 参数进行快速拼接（无需转码）
                     VideoService._merge_and_save_videos(
                         temp_video_files,
                         output_video_path,
@@ -495,7 +499,34 @@ class VideoService:
                         temp_video_dir
                     )
                     
-                    # 第三步：更新数据库
+                    logger.info(f'步骤2 完成: 队列 {queue_id} 的视频已合并')
+                    
+                    # 步骤3：最终视频合成完毕，立即改变队列状态为 COMPLETED
+                    logger.info(f'步骤3: 最终视频合成完毕，更新队列状态为 COMPLETED')
+                    VideoSynthesisQueue.update_status(queue_id, VideoSynthesisQueue.STATUS_COMPLETED)
+                    logger.info(f'✓ 队列 {queue_id} (video_{video_index}) 状态已改为 COMPLETED')
+                    
+                    # 步骤4：删除对应的临时视频
+                    logger.info(f'步骤4: 删除临时视频文件并更新数据库状态')
+                    delete_count = 0
+                    for temp_segment_record in temp_segment_records:
+                        try:
+                            temp_video_abs_path = temp_segment_record.get_absolute_temp_video_path()
+                            if os.path.exists(temp_video_abs_path):
+                                os.remove(temp_video_abs_path)
+                                logger.debug(f'已删除临时文件: {temp_video_abs_path}')
+                                delete_count += 1
+                        except Exception as e:
+                            logger.warning(f'删除临时文件失败: temp_segment_id={temp_segment_record.id}, error={str(e)}')
+                        
+                        # 更新临时视频段状态：MERGED -> DELETED
+                        TempVideoSegment.update_status(temp_segment_record.id, TempVideoSegment.STATUS_MERGED)
+                        TempVideoSegment.update_status(temp_segment_record.id, TempVideoSegment.STATUS_DELETED)
+                    
+                    logger.info(f'步骤4 完成: 已删除 {delete_count} 个临时视频文件，数据库状态已更新为 DELETED')
+                    
+                    # 步骤5：创建 VideoSegment 数据库记录
+                    logger.info(f'步骤5: 创建 VideoSegment 数据库记录')
                     relative_video_path = os.path.relpath(output_video_path, output_path)
                     segment_id = VideoSegment.create(
                         project_id,
@@ -504,35 +535,16 @@ class VideoService:
                         relative_video_path
                     )
                     VideoSegment.update_status(segment_id, VideoSegment.STATUS_COMPLETED)
-                    
-                    logger.info(f'视频 video_{video_index} 算法完成')
-                    
-                    # 第四步：更新为 merged 並删除临时文件
-                    for temp_segment_record in temp_segment_records:
-                        # 删除临时视频文件
-                        try:
-                            temp_video_abs_path = temp_segment_record.get_absolute_temp_video_path()
-                            if os.path.exists(temp_video_abs_path):
-                                os.remove(temp_video_abs_path)
-                                logger.debug(f'删除临时文件: {temp_video_abs_path}')
-                        except Exception as e:
-                            logger.warning(f'删除临时文件失败: {str(e)}')
-                        
-                        # 更新为 merged（文件已合成到最终视频）
-                        TempVideoSegment.update_status(temp_segment_record.id, TempVideoSegment.STATUS_MERGED)
-                        
-                        # 最后标记为 deleted（文件已删除）
-                        TempVideoSegment.update_status(temp_segment_record.id, TempVideoSegment.STATUS_DELETED)
-                    
-                    # 第五步：更新队列状态
-                    VideoSynthesisQueue.update_status(queue_id, VideoSynthesisQueue.STATUS_COMPLETED)
-                    logger.info(f'队列 video_{video_index} 处理完成')
+                    logger.info(f'步骤5 完成: VideoSegment 记录已创建 (segment_id={segment_id})')
+                    logger.info(f'✓ 队列 {queue_id} (video_{video_index}) 全部处理完成！输出文件: {output_video_path}')
                     
                 except Exception as e:
                     logger.error(f'处理队列失败: queue_id={queue_id}, error={str(e)}')
                     # 恢复队列状态为待处理
                     VideoSynthesisQueue.update_status(queue_id, VideoSynthesisQueue.STATUS_PENDING)
-                    continue
+                    # 队列处理失败时停止整个流程，不继续处理后续队列
+                    logger.error(f'由于队列 {queue_id} 处理失败，停止视频合成流程')
+                    return False
                 
                 finally:
                     completed_queue += 1
@@ -741,7 +753,7 @@ class VideoService:
             with open(concat_file, 'w', encoding='utf-8') as f:
                 for video_file in temp_video_files:
                     # FFmpeg concat demuxer 需要使用单引号引用文件路径
-                    f.write(f"file '{os.path.abspath(video_file)}'\\n")
+                    f.write(f"file '{os.path.abspath(video_file)}'\n")
             
             logger.info(f'创建了 concat 文件: {concat_file}')
             
@@ -762,18 +774,20 @@ class VideoService:
             
             logger.info(f'FFmpeg 命令: {" ".join(ffmpeg_cmd)}')
             
-            # 执行命令
+            # 执行命令（使用 UTF-8 编码以支持中文路径）
             result = subprocess.run(
                 ffmpeg_cmd,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=3600  # 最长 1 小时
             )
             
             if result.returncode != 0:
-                error_msg = result.stderr
+                error_msg = result.stderr if result.stderr else '未知错误'
                 logger.error(f'FFmpeg 拼接失败: {error_msg}')
-                raise Exception(f'FFmpeg 传递器错误: {error_msg}')
+                raise Exception(f'FFmpeg 拼接失败: {error_msg}')
             
             logger.info(f'视频拼接成功: {output_file}')
             
