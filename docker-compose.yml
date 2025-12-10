@@ -2,8 +2,8 @@ version: '3.8'
 
 services:
   novel-to-video:
-    # 从当前目录的Dockerfile构建镜像
-    build: .
+    # 使用 GitHub Actions 自动构建的镜像
+    image: 498330580/novel_video:latest
     # 容器名称
     container_name: novel-to-video
     # 端口映射（主机:容器）
