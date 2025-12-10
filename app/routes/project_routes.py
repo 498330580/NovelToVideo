@@ -215,6 +215,9 @@ def generate_video(project_id):
         if not project:
             return jsonify({'success': False, 'error': '项目不存在'}), 404
 
+        # 更新项目状态为处理中
+        Project.update_status(project_id, Project.STATUS_PROCESSING)
+        
         TaskScheduler.submit_video_task(project_id)
         return jsonify({'success': True, 'message': '已提交视频生成任务'})
     except Exception as e:
