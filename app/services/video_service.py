@@ -328,8 +328,8 @@ class VideoService:
         bitrate = config.get('bitrate', DefaultConfig.DEFAULT_BITRATE)
         
         try:
-            # 清理临时目录中的孤立文件
-            VideoService._cleanup_orphaned_temp_files(temp_video_dir)
+            # 清理临时目录中的孤立文件（需要项目ID来查询数据库状态）
+            VideoService._cleanup_orphaned_temp_files(project_id, temp_video_dir)
             FileHandler.ensure_dir(output_path)
             
             # 调用新的队列驱动方法处理视频合成
@@ -436,11 +436,21 @@ class VideoService:
                             # 使用绝对路径上下文中的文件
                             temp_video_abs_path = temp_seg_record.get_absolute_temp_video_path()
                             
-                            # 检查文件是否已存在（断点续传）
-                            if os.path.exists(temp_video_abs_path) and os.path.getsize(temp_video_abs_path) > 0:
-                                logger.debug(f'临时视频已存在，跳过生成')
-                            else:
-                                # 生成临时视频
+                            # 主要逻辑: 查询数据库status，判断是否需要生成
+                            if temp_seg_record.status == TempVideoSegment.STATUS_SYNTHESIZED:
+                                # 已经合成，跳过生成，直接使用现有文件
+                                logger.info(f'临时视频已合成: temp_segment_id={temp_segment_id}, status=synthesized, 跳过生成')
+                                if os.path.exists(temp_video_abs_path) and os.path.getsize(temp_video_abs_path) > 0:
+                                    # 文件存在且大小正常，直接使用
+                                    logger.debug(f'文件正常，使用现有临时文件')
+                                else:
+                                    # 文件缺失或损坏需重新生成
+                                    logger.warning(f'临时文件不存在或损坏，重新生成: {temp_video_abs_path}')
+                                    temp_seg_record.status = TempVideoSegment.STATUS_PENDING
+                                    # 恢复为pending，继续处理（下面的逻辑）
+                            
+                            if temp_seg_record.status == TempVideoSegment.STATUS_PENDING or temp_seg_record.status != TempVideoSegment.STATUS_SYNTHESIZED:
+                                # 未合成或空状态，需要生成
                                 audio_abs_path = segment.get_absolute_audio_path()
                                 logger.info(f'生成临时视频: temp_segment_id={temp_segment_id}')
                                 
@@ -537,36 +547,77 @@ class VideoService:
             return False
     
     @staticmethod
-    def _cleanup_orphaned_temp_files(temp_video_dir):
+    def _cleanup_orphaned_temp_files(project_id, temp_video_dir):
         """
         清理临时目录中的孤立文件
         
-        异常中断时，临时目录可能残留：
-        - 未完成的视频片段（segment_*.mp4）
-        - 音频临时文件（*.m4a）
-        这些文件会被清理，重新启动时重新生成
+        异常中断时，临时目录可能残留文件。本方法通过查询数据库状态来判断：
+        - 如果 temp_video_segments 中 status='pending' 或为空，则删除对应临时文件
+        - 如果 status='synthesized'，则保留（正在处理或已完成）
+        - 如果 status='deleted'，则删除（已标记删除）
+        
+        这样可以支持断点续传，项目异常中断后重新开始时不会丢失已合成的临时视频
         
         Args:
+            project_id: 项目ID
             temp_video_dir: 临时视频目录
         """
         if not os.path.exists(temp_video_dir):
             return
         
         try:
+            # 获取该项目的所有临时视频段状态
+            temp_segments = TempVideoSegment.get_by_project(project_id)
+            temp_segment_map = {seg.id: seg for seg in temp_segments}
+            
             cleaned_count = 0
+            preserved_count = 0
+            
             for filename in os.listdir(temp_video_dir):
                 file_path = os.path.join(temp_video_dir, filename)
-                # 清理所有临时文件（segment_*.mp4 和 *.m4a）
+                
+                # 只处理临时文件（segment_*.mp4 和 *.m4a）
                 if filename.startswith('segment_') or filename.endswith('.m4a'):
                     try:
-                        if os.path.isfile(file_path):
+                        if not os.path.isfile(file_path):
+                            continue
+                        
+                        # 对于 segment_*.m4a 类型的音频临时文件，直接删除
+                        if filename.endswith('.m4a'):
                             os.remove(file_path)
                             cleaned_count += 1
+                            continue
+                        
+                        # 对于 segment_*.mp4，尝试从数据库查询对应的临时视频段
+                        # 匹配格式：segment_{project_id}/segment_{text_segment_id}.mp4
+                        should_delete = True
+                        
+                        # 检查是否存在对应的数据库记录
+                        for temp_seg in temp_segments:
+                            temp_path = temp_seg.temp_video_path
+                            # temp_path 可能是相对路径或包含项目ID的路径
+                            if temp_path and filename in temp_path:
+                                # 如果找到对应的数据库记录，检查状态
+                                if temp_seg.status == TempVideoSegment.STATUS_SYNTHESIZED:
+                                    # 已合成，保留文件
+                                    should_delete = False
+                                    preserved_count += 1
+                                    break
+                                elif temp_seg.status == TempVideoSegment.STATUS_DELETED:
+                                    # 已标记删除，删除文件
+                                    should_delete = True
+                                    break
+                        
+                        # 删除文件
+                        if should_delete and os.path.isfile(file_path):
+                            os.remove(file_path)
+                            cleaned_count += 1
+                    
                     except Exception as e:
                         logger.warning(f'清理临时文件失败: {filename}, 错误: {str(e)}')
             
-            if cleaned_count > 0:
-                logger.info(f'清理了 {cleaned_count} 个孤立的临时文件（异常中断的残留）')
+            if cleaned_count > 0 or preserved_count > 0:
+                logger.info(f'清理临时文件: 删除 {cleaned_count} 个孤立文件，保留 {preserved_count} 个已合成文件')
         except Exception as e:
             logger.warning(f'清理临时目录失败: {str(e)}')
     
