@@ -318,7 +318,17 @@ def view_video_queue(project_id):
         from app.models.temp_video_segment import TempVideoSegment
         queues_with_progress = []
         for queue in queues:
-            completed_segments = len([s for s in queue.temp_segment_ids if TempVideoSegment.get_by_id(s) and TempVideoSegment.get_by_id(s).status == TempVideoSegment.STATUS_SYNTHESIZED])
+            # 计算该队列的已合成片段数
+            # 注意：根据流程，合成完毁后片段状态可以是
+            # STATUS_SYNTHESIZED（已合成）、STATUS_MERGED（已合并）、STATUS_DELETED（已删除）
+            completed_segments = 0
+            for temp_segment_id in queue.temp_segment_ids:
+                temp_seg = TempVideoSegment.get_by_id(temp_segment_id)
+                if temp_seg and temp_seg.status in [TempVideoSegment.STATUS_SYNTHESIZED, 
+                                                     TempVideoSegment.STATUS_MERGED, 
+                                                     TempVideoSegment.STATUS_DELETED]:
+                    completed_segments += 1
+            
             queues_with_progress.append({
                 'queue': queue,
                 'completed_segments': completed_segments,
