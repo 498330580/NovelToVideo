@@ -167,6 +167,9 @@
                     <button id="btnGenerateVideo" class="btn btn-success" {% if stats and (stats.completed_segments < stats.total_segments or stats.total_segments == 0) %}disabled{% endif %}>
                         生成视频
                     </button>
+                    <a href="{{ url_for('project.view_video_queue', project_id=project.id) }}" class="btn btn-info">
+                        查看队列
+                    </a>
                 </div>
             </div>
         </div>

@@ -292,3 +292,39 @@ def resegment(project_id):
     except Exception as e:
         logger.error(f'重新分段失败: {str(e)}', exc_info=True)
         return jsonify({'success': False, 'error': f'重新分段失败: {str(e)}'}), 500
+
+
+@project_bp.route('/<int:project_id>/video/queue')
+def view_video_queue(project_id):
+    """查看视频合成队列"""
+    try:
+        project = ProjectService.get_project(project_id)
+        if not project:
+            flash('项目不存在', 'error')
+            return redirect(url_for('project.index'))
+        
+        # 获取项目的所有视频合成队列
+        from app.models.video_synthesis_queue import VideoSynthesisQueue
+        queues = VideoSynthesisQueue.get_by_project(project_id)
+        
+        # 计算统计信息
+        total_queues = len(queues)
+        completed_count = len([q for q in queues if q.status == VideoSynthesisQueue.STATUS_COMPLETED])
+        pending_count = len([q for q in queues if q.status == VideoSynthesisQueue.STATUS_PENDING])
+        synthesizing_count = len([q for q in queues if q.status == VideoSynthesisQueue.STATUS_SYNTHESIZING])
+        total_duration = sum(q.total_duration for q in queues)
+        
+        return render_template(
+            'video_queue.html',
+            project=project,
+            queues=queues,
+            total_queues=total_queues,
+            completed_count=completed_count,
+            pending_count=pending_count,
+            synthesizing_count=synthesizing_count,
+            total_duration=total_duration
+        )
+    except Exception as e:
+        logger.error(f'查看视频队列失败: {str(e)}', exc_info=True)
+        flash(f'查看视频队列失败: {str(e)}', 'error')
+        return redirect(url_for('project.detail', project_id=project_id))

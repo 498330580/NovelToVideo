@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}视频合成队列 - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="video-queue-page">
+    <div class="page-header">
+        <h2>视频合成队列 - {{ project.name }}</h2>
+        <div>
+            <a href="{{ url_for('project.detail', project_id=project.id) }}" class="btn btn-secondary">返回项目</a>
+        </div>
+    </div>
+    
+    {% if queues %}
+    <div class="info-card">
+        <h3>队列预览</h3>
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>队列ID</th>
+                        <th>视频序号</th>
+                        <th>状态</th>
+                        <th>总时长</th>
+                        <th>包含音频数</th>
+                        <th>输出文件</th>
+                        <th>创建时间</th>
+                        <th>更新时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for queue in queues %}
+                    <tr>
+                        <td>{{ queue.id }}</td>
+                        <td>{{ queue.video_index }}</td>
+                        <td>
+                            <span class="badge badge-{{ queue.status }}">
+                                {% if queue.status == 'pending' %}待处理
+                                {% elif queue.status == 'synthesizing' %}合成中
+                                {% elif queue.status == 'completed' %}已完成
+                                {% else %}{{ queue.status }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>{{ queue.total_duration | round(2) }} 秒</td>
+                        <td>{{ queue.temp_segment_ids | length }} 个</td>
+                        <td><code>{{ queue.output_video_path }}</code></td>
+                        <td>{{ queue.created_at }}</td>
+                        <td>{{ queue.updated_at or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="queue-stats" style="margin-top: 20px;">
+            <h4>队列统计</h4>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value">{{ total_queues }}</div>
+                    <div class="stat-label">总队列数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ completed_count }}</div>
+                    <div class="stat-label">已完成队列</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ pending_count }}</div>
+                    <div class="stat-label">待处理队列</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ synthesizing_count }}</div>
+                    <div class="stat-label">合成中队列</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ (completed_count / total_queues * 100) | round(1) }} %</div>
+                    <div class="stat-label">完成进度</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ total_duration | round(0) | int }} 秒</div>
+                    <div class="stat-label">总视频时长</div>
+                </div>
+            </div>
+            
+            {% if total_queues > 0 %}
+            <div class="progress-bar" style="margin-top: 20px;">
+                <div class="progress-fill" style="width: 0%" data-width="{{ (completed_count / total_queues * 100) | int }}"></div>
+            </div>
+            <p class="progress-text">队列完成进度: {{ (completed_count / total_queues * 100) | int }}%</p>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="info-card">
+        <p>暂无视频合成队列数据。请先点击"生成视频"按钮创建队列。</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 设置进度条宽度
+    var fills = document.querySelectorAll('.progress-fill');
+    fills.forEach(function(fill) {
+        if (fill && fill.dataset && fill.dataset.width) {
+            var w = parseInt(fill.dataset.width, 10);
+            if (!isNaN(w) && w >= 0 && w <= 100) {
+                fill.style.width = w + '%';
+            }
+        }
+    });
+    
+    // 自动刷新页面以更新队列状态(每3秒刷新一次)
+    const refreshInterval = setInterval(function() {
+        fetch(window.location.href)
+            .then(response => response.text())
+            .then(html => {
+                // 检查是否有合成中的队列
+                if (html.includes('合成中')) {
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('刷新失败:', error);
+                clearInterval(refreshInterval);
+            });
+    }, 3000); // 每3秒检查一次
+});
+</script>
+{% endblock %}
