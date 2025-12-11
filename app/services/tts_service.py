@@ -53,9 +53,16 @@ class TTSService:
             
             if total_segments == 0:
                 logger.info(f'没有待合成的段落: 项目ID={project_id}')
-                # 无段落可处理，任务直接完成，并将项目状态更新为已完成，避免页面长时间处于"处理中"
+                # 无段落可处理，检查项目当前状态
+                # 如果项目状态是 PROCESSING，说明是系统重启后自动触发的任务
+                # 此时音频已完成，项目应该重置为 FAILED 状态（等待用户生成视频）
+                # 不应该设置为 COMPLETED，因为视频还没有合成
+                current_project = Project.get_by_id(project_id)
+                if current_project and current_project.status == Project.STATUS_PROCESSING:
+                    # 系统重启后的自动任务，音频已完成 → 重置为 FAILED
+                    Project.update_status(project_id, Project.STATUS_FAILED)
+                    logger.info(f'项目{project_id}音频已完成（无待处理段落），重置为FAILED，等待用户生成视频')
                 Task.update_status(task_id, Task.STATUS_COMPLETED)
-                Project.update_status(project_id, Project.STATUS_COMPLETED)
                 return True, None
             
             logger.info(f'开始语音合成: 项目ID={project_id}, 段落数={total_segments}')

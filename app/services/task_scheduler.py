@@ -233,15 +233,15 @@ class TaskScheduler:
     def _reset_stale_processing_projects():
         """
         重置系统重启后遗留的处理中项目
-        - 将状态为processing的项目重置为pending
+        - 根据项目的实际进度智能重置状态
+        - 如果音频已完全合成，设置为FAILED（等待用户重新生成视频）
+        - 如果音频未完全合成，重置为PENDING（需要重新合成语音）
         - 将状态为running的任务重置为failed
-        
-        注意: 为了提高启动速度，此方法仅进行基本的状态重置，
-        不进行复杂的项目统计和状态同步操作
         """
         try:
             from app.models.project import Project
             from app.models.task import Task
+            from app.models.text_segment import TextSegment
             
             # 在线程内推送应用上下文，避免数据库访问报错
             if TaskScheduler._app is not None:
@@ -249,13 +249,35 @@ class TaskScheduler:
                     # 重置处理中的项目状态
                     projects = Project.get_all()
                     reset_count = 0
+                    failed_count = 0
+                    
                     for project in projects:
                         if project.status == Project.STATUS_PROCESSING:
-                            Project.update_status(project.id, Project.STATUS_PENDING)
-                            reset_count += 1
+                            # 检查项目的音频完成情况
+                            all_segments = TextSegment.get_by_project(project.id)
+                            completed_segments = TextSegment.get_completed_segments(project.id)
+                            
+                            if all_segments and completed_segments:
+                                audio_progress = (len(completed_segments) / len(all_segments)) * 100
+                            else:
+                                audio_progress = 0 if not all_segments else 100
+                            
+                            # 根据音频进度决定项目状态
+                            if audio_progress >= 100:
+                                # 音频已完全合成 → 设置为FAILED，等待用户点击生成视频
+                                Project.update_status(project.id, Project.STATUS_FAILED)
+                                logger.info(f'项目{project.id}音频已完成，重启后设置为失败状态，等待用户重新生成视频')
+                                failed_count += 1
+                            else:
+                                # 音频未完全合成 → 重置为PENDING，需要重新合成
+                                Project.update_status(project.id, Project.STATUS_PENDING)
+                                logger.info(f'项目{project.id}音频进度{audio_progress:.1f}%，重启后重置为待处理')
+                                reset_count += 1
                     
                     if reset_count > 0:
-                        logger.info(f'重置了 {reset_count} 个处理中的项目状态为待处理')
+                        logger.info(f'重置了 {reset_count} 个处理中的项目状态为待处理（需要重新合成语音）')
+                    if failed_count > 0:
+                        logger.info(f'设置了 {failed_count} 个处理中的项目为失败状态（等待生成视频）')
                     
                     # 重置运行中的任务状态
                     tasks = Task.get_running_tasks()
@@ -266,9 +288,29 @@ class TaskScheduler:
             else:
                 # 无应用上下文时的简化处理
                 projects = Project.get_all()
+                reset_count = 0
                 for project in projects:
                     if project.status == Project.STATUS_PROCESSING:
-                        Project.update_status(project.id, Project.STATUS_PENDING)
+                        # 检查项目的音频完成情况
+                        all_segments = TextSegment.get_by_project(project.id)
+                        completed_segments = TextSegment.get_completed_segments(project.id)
+                        
+                        if all_segments and completed_segments:
+                            audio_progress = (len(completed_segments) / len(all_segments)) * 100
+                        else:
+                            audio_progress = 0 if not all_segments else 100
+                        
+                        # 根据音频进度决定项目状态
+                        if audio_progress >= 100:
+                            Project.update_status(project.id, Project.STATUS_FAILED)
+                            logger.info(f'项目{project.id}音频已完成，重启后设置为失败状态，等待用户重新生成视频')
+                        else:
+                            Project.update_status(project.id, Project.STATUS_PENDING)
+                            logger.info(f'项目{project.id}音频进度{audio_progress:.1f}%，重启后重置为待处理')
+                        reset_count += 1
+                
+                if reset_count > 0:
+                    logger.info(f'重置了 {reset_count} 个处理中的项目状态')
                 
                 tasks = Task.get_running_tasks()
                 for task in tasks:
