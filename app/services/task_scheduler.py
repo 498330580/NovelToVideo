@@ -209,12 +209,26 @@ class TaskScheduler:
                 success, error = VideoService.generate_project_videos(project_id)
             
             if success:
-                logger.info(f'视频生成任务完成: 项目ID={project_id}')
+                logger.info(f'视频生成任务完成: 项目 ID={project_id}')
             else:
-                logger.error(f'视频生成任务失败: 项目ID={project_id}, 错误: {error}')
+                logger.error(f'视频生成任务失败: 项目 ID={project_id}, 错误: {error}')
+                # 更新项目状态为失败
+                from app.models.project import Project
+                if TaskScheduler._app is not None:
+                    with TaskScheduler._app.app_context():
+                        Project.update_status(project_id, Project.STATUS_FAILED)
+                else:
+                    Project.update_status(project_id, Project.STATUS_FAILED)
                 
         except Exception as e:
             logger.error(f'视频生成任务异常: 项目ID={project_id}, {str(e)}', exc_info=True)
+            # 异常时也要更新项目状态为失败
+            from app.models.project import Project
+            if TaskScheduler._app is not None:
+                with TaskScheduler._app.app_context():
+                    Project.update_status(project_id, Project.STATUS_FAILED)
+            else:
+                Project.update_status(project_id, Project.STATUS_FAILED)
         finally:
             if project_id in TaskScheduler._running_tasks:
                 del TaskScheduler._running_tasks[project_id]

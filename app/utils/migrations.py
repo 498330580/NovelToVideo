@@ -300,12 +300,106 @@ def _migration_005_create_video_synthesis_queue_table():
         return False
 
 
+def _migration_006_populate_audio_duration():
+    """
+    迭移006：为已存在的音频段落填充 audio_duration 字段数据
+    用于修复 1.0.0 版本升级后缺少 audio_duration 数据的问题
+    """
+    try:
+        import os
+        from config import DefaultConfig
+        
+        try:
+            from moviepy.editor import AudioFileClip
+        except ImportError:
+            logger.warning("迭移006： moviepy 未安装，无法填充 audio_duration，请手动执行 populate_audio_duration.py")
+            return True
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 检查是否有 audio_duration 为 NULL 的记录
+        cursor.execute('''
+            SELECT COUNT(*) FROM text_segments 
+            WHERE audio_duration IS NULL AND audio_path IS NOT NULL AND audio_path != ''
+        ''')
+        count = cursor.fetchone()[0]
+        
+        if count == 0:
+            logger.info("迭移006: 没有需要填充的 audio_duration 记录")
+            conn.close()
+            return True
+        
+        logger.info(f"迭移006: 开始填充 audio_duration 字段，共 {count} 条记录")
+        
+        # 获取需要填充的记录
+        cursor.execute('''
+            SELECT id, project_id, audio_path 
+            FROM text_segments 
+            WHERE audio_duration IS NULL AND audio_path IS NOT NULL AND audio_path != ''
+            ORDER BY id
+        ''')
+        rows = cursor.fetchall()
+        
+        success_count = 0
+        skip_count = 0
+        
+        for row in rows:
+            segment_id = row['id']
+            project_id = row['project_id']
+            relative_audio_path = row['audio_path']
+            
+            try:
+                # 构建绝对路径
+                abs_audio_path = os.path.join(
+                    DefaultConfig.TEMP_AUDIO_DIR,
+                    str(project_id),
+                    relative_audio_path
+                )
+                
+                if not os.path.exists(abs_audio_path):
+                    logger.debug(f"迭移006: 音频文件不存在 - {abs_audio_path}")
+                    skip_count += 1
+                    continue
+                
+                # 获取音频时长
+                try:
+                    audio = AudioFileClip(abs_audio_path)
+                    duration = audio.duration
+                    audio.close()
+                    
+                    # 更新数据库
+                    cursor.execute(
+                        'UPDATE text_segments SET audio_duration = ? WHERE id = ?',
+                        (duration, segment_id)
+                    )
+                    success_count += 1
+                    logger.debug(f"迭移006: 段落 {segment_id} - 时长 {duration:.2f}s")
+                    
+                except Exception as audio_error:
+                    logger.debug(f"迭移006: 无法获取段落 {segment_id} 的音频时长 - {str(audio_error)}")
+                    skip_count += 1
+                    
+            except Exception as e:
+                logger.warning(f"迭移006: 段落 {segment_id} 处理失败 - {str(e)}")
+                skip_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"迭移006: 完成！成功 {success_count}, 跳过 {skip_count}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"迭移006失败: {str(e)}", exc_info=True)
+        return False
+
 def _get_migration_version():
     """
-    获取数据库当前的迁移版本
+    获取数据库当前的迭移版本
     
     Returns:
-        当前迁移版本号（整数），如果未初始化则返回 0
+        当前迭移版本号（整数），如果未初始化则返回 0
     """
     try:
         conn = get_db_connection()
@@ -392,13 +486,14 @@ def run_migrations():
         current_version = _get_migration_version()
         logger.info(f"当前数据库迁移版本: {current_version}")
         
-        # 定义所有可用的迁移（版本号 -> (迁移函数, 迁移名称)）
+        # 定义所有可用的迭移（版本号 -> (迭移函数, 迭移名称)）
         migrations = {
             1: (_migration_001_add_audio_duration, "为 text_segments 表添加 audio_duration 字段"),
             2: (_migration_002_audio_paths_to_relative, "将 text_segments 表中的 audio_path 转换为相对路径"),
             3: (_migration_003_output_paths_to_relative, "将 projects 表中的 output_path 转换为相对路径"),
             4: (_migration_004_create_temp_video_segments_table, "创建 temp_video_segments 表"),
             5: (_migration_005_create_video_synthesis_queue_table, "创建 video_synthesis_queue 表"),
+            6: (_migration_006_populate_audio_duration, "为已存在的音频段落填充 audio_duration 数据"),
         }
         
         # 按版本顺序执行迁移

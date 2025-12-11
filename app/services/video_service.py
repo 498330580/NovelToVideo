@@ -276,6 +276,7 @@ class VideoService:
             if not success:
                 error_msg = '视频合成失败'
                 Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                Project.update_status(project_id, Project.STATUS_FAILED)
                 return False, error_msg
             
             Task.update_status(task_id, Task.STATUS_COMPLETED)
@@ -331,6 +332,26 @@ class VideoService:
             # 清理临时目录中的孤立文件（需要项目ID来查询数据库状态）
             VideoService._cleanup_orphaned_temp_files(project_id, temp_video_dir)
             FileHandler.ensure_dir(output_path)
+            
+            # 检查是否已经存在随外数据
+            existing_queues = VideoSynthesisQueue.get_by_project(project_id)
+            pending_queues = [q for q in existing_queues if q.status != VideoSynthesisQueue.STATUS_COMPLETED]
+            
+            if not pending_queues:
+                # 如果没有待处理的队列，先创建队列数据
+                logger.info(f'没有找到待处理的队列，正在创建...')
+                success = VideoService.generate_and_save_queue(project_id)
+                if not success:
+                    logger.error(f'创建队列失败')
+                    return False
+                
+                # 重新获取队列
+                existing_queues = VideoSynthesisQueue.get_by_project(project_id)
+                pending_queues = [q for q in existing_queues if q.status != VideoSynthesisQueue.STATUS_COMPLETED]
+                
+                if not pending_queues:
+                    logger.error(f'创建队列后仍有找不到待处理的队列')
+                    return False
             
             # 调用新的队列驱动方法处理视频合成
             return VideoService._synthesize_from_queue(
