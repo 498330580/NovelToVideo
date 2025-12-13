@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}系统配置 - 小说转视频系统{% endblock %}
+
+{% block content %}
+<div class="config-page">
+    <h2>系统配置</h2>
+    
+    <div class="info-card">
+        <h3>默认配置参数</h3>
+        <div id="defaultConfig" class="config-grid">
+            <p>加载中...</p>
+        </div>
+    </div>
+    
+    <div class="info-card">
+        <h3>可用语音列表</h3>
+        <div id="voiceList" class="voice-grid">
+            <p>加载中...</p>
+        </div>
+    </div>
+    
+    <div class="info-card">
+        <h3>系统信息</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <label>最大线程数:</label>
+                <span>16</span>
+            </div>
+            <div class="info-item">
+                <label>最大并发项目:</label>
+                <span>5</span>
+            </div>
+            <div class="info-item">
+                <label>单项目最大字数:</label>
+                <span>500万字</span>
+            </div>
+            <div class="info-item">
+                <label>临时文件最大占用:</label>
+                <span>50GB</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadConfig() {
+    try {
+        const response = await fetch('/config/default');
+        const result = await response.json();
+        
+        if (result.success) {
+            const config = result.data;
+            const html = Object.entries(config).map(([key, value]) => `
+                <div class="config-item">
+                    <label>${key}:</label>
+                    <span>${JSON.stringify(value)}</span>
+                </div>
+            `).join('');
+            
+            document.getElementById('defaultConfig').innerHTML = html;
+        }
+    } catch (error) {
+        document.getElementById('defaultConfig').innerHTML = '<p class="error">加载失败</p>';
+    }
+}
+
+async function loadVoices() {
+    try {
+        const response = await fetch('/config/voices');
+        const result = await response.json();
+        
+        if (result.success) {
+            const voices = result.data;
+            const html = voices.map(voice => `
+                <div class="voice-item">
+                    <strong>${voice.label}</strong>
+                    <span class="voice-value">${voice.value}</span>
+                </div>
+            `).join('');
+            
+            document.getElementById('voiceList').innerHTML = html;
+        }
+    } catch (error) {
+        document.getElementById('voiceList').innerHTML = '<p class="error">加载失败</p>';
+    }
+}
+
+loadConfig();
+loadVoices();
+</script>
+{% endblock %}
