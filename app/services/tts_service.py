@@ -93,13 +93,36 @@ class TTSService:
                     progress = (completed_count + failed_count) / total_segments * 100
                     Task.update_progress(task_id, progress)
             
+            # 完成所有处理后，进行最后一次数据库检查
+            # 检查是否有遗留的 'synthesizing' 状态或其他非 'completed' 的段落
+            logger.info(f'完成初始处理，进行最后一次数据库状态检查: 项目ID={project_id}')
+            all_project_segments = TextSegment.get_by_project(project_id)
+            retry_segments = []
+            for seg in all_project_segments:
+                if seg.audio_status != TextSegment.AUDIO_STATUS_COMPLETED:
+                    logger.warning(f'检测到未完成的段落: segment_id={seg.id}, status={seg.audio_status}')
+                    retry_segments.append(seg)
+            
+            # 如果有未完成的段落，将其重新标记为 pending 供重试
+            if retry_segments:
+                logger.info(f'发现 {len(retry_segments)} 个未完成的段落，重新标记为 pending 供重试')
+                for seg in retry_segments:
+                    try:
+                        TextSegment.update_audio_status(seg.id, TextSegment.AUDIO_STATUS_PENDING)
+                        logger.info(f'已重置段落 {seg.id} 为 pending 状态，供下次重试')
+                    except Exception as e:
+                        logger.error(f'重置段落状态失败: segment_id={seg.id}, error={str(e)}')
+            
             # 完成任务
-            if failed_count == 0:
+            if failed_count == 0 and not retry_segments:
                 Task.update_status(task_id, Task.STATUS_COMPLETED)
                 logger.info(f'语音合成完成: 项目ID={project_id}')
                 return True, None
             else:
-                error_msg = f'部分段落合成失败: 成功{completed_count}, 失败{failed_count}'
+                if retry_segments:
+                    error_msg = f'部分段落合成失败或遗留: 成功{completed_count}, 失败{failed_count}, 需重试{len(retry_segments)}'
+                else:
+                    error_msg = f'部分段落合成失败: 成功{completed_count}, 失败{failed_count}'
                 Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
                 # 更新项目状态为失败
                 Project.update_status(project_id, Project.STATUS_FAILED)

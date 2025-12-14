@@ -169,7 +169,13 @@ class TaskScheduler:
                 logger.info(f'开始自动生成视频合成队列: 项目 ID={project_id}')
                 try:
                     from app.services.video_service import VideoService
-                    queue_success = VideoService.generate_and_save_queue(project_id)
+                    # 确保在应用上下文内调用 generate_and_save_queue
+                    if TaskScheduler._app is not None:
+                        with TaskScheduler._app.app_context():
+                            queue_success = VideoService.generate_and_save_queue(project_id)
+                    else:
+                        queue_success = VideoService.generate_and_save_queue(project_id)
+                    
                     if queue_success:
                         logger.info(f'视频合成队列生成成功: 项目 ID={project_id}')
                     else:
@@ -177,7 +183,7 @@ class TaskScheduler:
                 except Exception as e:
                     logger.error(f'自动生成队列异常: 项目 ID={project_id}, {str(e)}', exc_info=True)
                             
-                # 第二步: 自动提交视频生成任务1
+                # 第二步: 自动提交视频生成任务
                 TaskScheduler.submit_video_task(project_id)
             else:
                 logger.error(f'语音合成任务失败: 项目ID={project_id}, 错误: {error}')

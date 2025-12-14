@@ -183,7 +183,7 @@ def stats(project_id):
 def retry_tts(project_id):
     """重试语音合成任务
     
-    - 将项目内失败的段落重置为待处理
+    - 将项目内失败和遗留的段落（包括FAILED、SYNTHESIZING等非COMPLETED状态）重置为待处理
     - 提交新的语音合成任务到调度器
     """
     try:
@@ -191,17 +191,26 @@ def retry_tts(project_id):
         if not project:
             return jsonify({'success': False, 'error': '项目不存在'}), 404
 
-        # 重置失败段落为待处理
-        TextSegment.reset_audio_status_by_project(
-            project_id,
-            TextSegment.AUDIO_STATUS_FAILED,
-            TextSegment.AUDIO_STATUS_PENDING
-        )
-
+        # 重置所有非completed状态的段落为待处理
+        # 这包括：FAILED、SYNTHESIZING、PENDING等
+        all_segments = TextSegment.get_by_project(project_id)
+        reset_count = 0
+        
+        for segment in all_segments:
+            if segment.audio_status != TextSegment.AUDIO_STATUS_COMPLETED:
+                try:
+                    TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_PENDING)
+                    reset_count += 1
+                    logger.info(f'重置段落为待处理: segment_id={segment.id}, 原状态={segment.audio_status}')
+                except Exception as e:
+                    logger.error(f'重置段落状态失败: segment_id={segment.id}, error={str(e)}')
+        
+        logger.info(f'重试语音合成: 项目ID={project_id}, 重置段落数={reset_count}')
+        
         # 提交语音合成任务
         TaskScheduler.submit_tts_task(project_id)
 
-        return jsonify({'success': True, 'message': '已提交重试语音合成任务'})
+        return jsonify({'success': True, 'message': f'已提交重试语音合成任务（重置{reset_count}个段落）'})
     except Exception as e:
         logger.error(f'重试语音合成失败: {str(e)}', exc_info=True)
         return jsonify({'success': False, 'error': f'重试失败: {str(e)}'}), 500
