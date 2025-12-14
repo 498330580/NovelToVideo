@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  novel-to-video:
+    # 使用 GitHub Actions 自动构建的镜像
+    image: 498330580/novel_video:latest
+    # 容器名称
+    container_name: novel-to-video
+    # 端口映射（主机:容器）
+    ports:
+      - "5000:5000"
+    # 卷挂载（持久化存储关键目录）
+    volumes:
+      - ./output:/app/output          # 输出视频文件
+      - ./temp:/app/temp              # 临时文件（音频、图片、视频片段）
+      - ./data:/app/data              # 数据库文件
+      - ./logs:/app/logs              # 应用日志
+    # 环境变量配置
+    environment:
+      - FLASK_ENV=production
+      - FLASK_APP=run.py
+    # 容器重启策略（异常退出时自动重启，最多5次）
+    restart: on-failure:5
+    # 资源限制（防止容器占用过多系统资源）
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'                 # 最多使用2个CPU核心
+          memory: 4G                  # 最多使用4GB内存
+        reservations:
+          cpus: '1.0'                 # 预留1个CPU核心
+          memory: 2G                  # 预留2GB内存
+    # 健康检查（定期检查容器健康状态）
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s                   # 每30秒检查一次
+      timeout: 10s                    # 检查超时时间
+      retries: 3                      # 失败3次后标记为不健康
+      start_period: 40s               # 容器启动后40秒开始检查
+    # 日志配置
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"               # 单个日志文件最大10MB
+        max-file: "3"                 # 最多保留3个日志文件
+    # 网络配置
+    networks:
+      - novel-to-video-net
+
+# 定义网络
+networks:
+  novel-to-video-net:
+    driver: bridge

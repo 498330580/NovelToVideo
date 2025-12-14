@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - 小说转视频系统{% endblock %}
+
+{% block content %}
+<div class="dashboard" data-aos="fade-up">
+    <!-- 页面标题 -->
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h2 class="mb-2">
+                <i class="fas fa-chart-pie text-primary me-2"></i>系统仪表板
+            </h2>
+            <p class="text-muted">实时监控项目处理状态和系统统计</p>
+        </div>
+        <a href="{{ url_for('project.create') }}" class="btn btn-primary btn-lg" data-aos="zoom-in">
+            <i class="fas fa-plus-circle me-2"></i>创建新项目
+        </a>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="row g-4 mb-5">
+        <!-- 总项目数 -->
+        <div class="col-lg-3 col-md-6" data-aos="zoom-in" data-aos-delay="100">
+            <div class="card stat-card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="stat-icon total mb-3">
+                        <i class="fas fa-cube fa-3x"></i>
+                    </div>
+                    <div class="stat-value text-primary">{{ stats.total_projects }}</div>
+                    <div class="stat-label fw-bold">总项目数</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 已完成 -->
+        <div class="col-lg-3 col-md-6" data-aos="zoom-in" data-aos-delay="200">
+            <div class="card stat-card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="stat-icon completed mb-3">
+                        <i class="fas fa-check-circle fa-3x text-success"></i>
+                    </div>
+                    <div class="stat-value text-success">{{ stats.completed_projects }}</div>
+                    <div class="stat-label fw-bold">已完成</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 处理中 -->
+        <div class="col-lg-3 col-md-6" data-aos="zoom-in" data-aos-delay="300">
+            <div class="card stat-card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="stat-icon processing mb-3">
+                        <i class="fas fa-cog fa-spin fa-3x text-warning"></i>
+                    </div>
+                    <div class="stat-value text-warning">{{ stats.processing_projects }}</div>
+                    <div class="stat-label fw-bold">处理中</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 失败项目 -->
+        <div class="col-lg-3 col-md-6" data-aos="zoom-in" data-aos-delay="400">
+            <div class="card stat-card border-0 shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="stat-icon failed mb-3">
+                        <i class="fas fa-times-circle fa-3x text-danger"></i>
+                    </div>
+                    <div class="stat-value text-danger">{{ stats.failed_projects }}</div>
+                    <div class="stat-label fw-bold">失败项目</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近项目 -->
+    <div class="card border-0 shadow-sm mb-5" data-aos="fade-up">
+        <div class="card-header bg-gradient py-3">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-history me-2"></i>最近项目
+            </h5>
+        </div>
+        <div class="card-body">
+            {% if stats.recent_projects %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="fw-bold">项目名称</th>
+                                <th class="fw-bold">状态</th>
+                                <th class="fw-bold">创建时间</th>
+                                <th class="fw-bold text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for project in stats.recent_projects %}
+                            <tr class="align-middle">
+                                <td>
+                                    <div class="fw-bold">
+                                        <i class="fas fa-film text-primary me-2"></i>{{ project.name }}
+                                    </div>
+                                    {% if project.description %}
+                                        <small class="text-muted d-block mt-1">{{ project.description[:50] }}{% if project.description|length > 50 %}...{% endif %}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge badge-{{ project.status }} rounded-pill">
+                                        {% if project.status == 'completed' %}
+                                            <i class="fas fa-check-circle me-1"></i>已完成
+                                        {% elif project.status == 'processing' %}
+                                            <i class="fas fa-spinner me-1"></i>处理中
+                                        {% elif project.status == 'pending' %}
+                                            <i class="fas fa-hourglass me-1"></i>待处理
+                                        {% elif project.status == 'failed' %}
+                                            <i class="fas fa-exclamation-circle me-1"></i>失败
+                                        {% elif project.status == 'cancelled' %}
+                                            <i class="fas fa-ban me-1"></i>已取消
+                                        {% else %}
+                                            {{ project.status }}
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <small class="text-muted">{{ project.created_at.strftime('%Y-%m-%d') if project.created_at else '-' }}</small>
+                                </td>
+                                <td class="text-center">
+                                    <a href="{{ url_for('project.detail', project_id=project.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-eye me-1"></i>查看详情
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center py-5">
+                    <i class="fas fa-inbox fa-3x text-muted mb-3 d-block" style="opacity: 0.3;"></i>
+                    <p class="text-muted">还没有项目，快来<a href="{{ url_for('project.create') }}" class="text-primary fw-bold">创建第一个项目</a>吧！</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 快速开始 -->
+    <div class="mb-5">
+        <h5 class="mb-4">
+            <i class="fas fa-rocket text-primary me-2"></i>快速开始
+        </h5>
+        <div class="row g-4">
+            <!-- 创建项目 -->
+            <div class="col-lg-4 col-md-6" data-aos="flip-left" data-aos-delay="100">
+                <div class="card quick-start-item border-0 shadow-sm text-center h-100">
+                    <div class="card-body">
+                        <div class="quick-start-icon mb-3">
+                            <i class="fas fa-plus-square fa-4x text-primary"></i>
+                        </div>
+                        <h5 class="card-title fw-bold">创建项目</h5>
+                        <p class="card-text text-muted">导入小说文本，配置转视频参数</p>
+                        <a href="{{ url_for('project.create') }}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-arrow-right me-1"></i>开始创建
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 查看项目 -->
+            <div class="col-lg-4 col-md-6" data-aos="flip-left" data-aos-delay="200">
+                <div class="card quick-start-item border-0 shadow-sm text-center h-100">
+                    <div class="card-body">
+                        <div class="quick-start-icon mb-3">
+                            <i class="fas fa-list-check fa-4x text-success"></i>
+                        </div>
+                        <h5 class="card-title fw-bold">查看项目</h5>
+                        <p class="card-text text-muted">浏览所有项目及其处理状态</p>
+                        <a href="{{ url_for('project.index') }}" class="btn btn-success btn-sm">
+                            <i class="fas fa-arrow-right me-1"></i>查看列表
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统配置 -->
+            <div class="col-lg-4 col-md-6" data-aos="flip-left" data-aos-delay="300">
+                <div class="card quick-start-item border-0 shadow-sm text-center h-100">
+                    <div class="card-body">
+                        <div class="quick-start-icon mb-3">
+                            <i class="fas fa-sliders-h fa-4x text-warning"></i>
+                        </div>
+                        <h5 class="card-title fw-bold">系统配置</h5>
+                        <p class="card-text text-muted">调整语音、视频等参数配置</p>
+                        <a href="{{ url_for('config.index') }}" class="btn btn-warning btn-sm">
+                            <i class="fas fa-arrow-right me-1"></i>前往配置
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统提示 -->
+    <div class="alert alert-info border-0 shadow-sm" role="alert" data-aos="fade-up">
+        <div class="d-flex align-items-start">
+            <i class="fas fa-lightbulb fa-2x text-info me-3 mt-1"></i>
+            <div>
+                <h5 class="alert-heading fw-bold mb-2">💡 使用提示</h5>
+                <ul class="mb-0 list-unstyled">
+                    <li class="mb-2">• 单个项目最多支持 500 万字</li>
+                    <li class="mb-2">• 建议使用 UTF-8 编码的 TXT 文件</li>
+                    <li class="mb-2">• 项目处理时间取决于文本长度，请耐心等待</li>
+                    <li>• 生成的视频文件保存在 output 目录下</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dashboard {
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .stat-card {
+        position: relative;
+        overflow: hidden;
+        border-top: 4px solid #667eea;
+    }
+
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200px;
+        height: 200px;
+        background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .stat-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0.5rem 0;
+    }
+
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+
+    .quick-start-item {
+        transition: all 0.3s ease;
+    }
+
+    .quick-start-item:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .badge-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    }
+
+    .table tbody tr:hover {
+        background-color: #f8f9fa !important;
+    }
+
+    .bg-gradient {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white;
+    }
+
+    .card-header {
+        border-bottom: none;
+    }
+</style>
+{% endblock %}

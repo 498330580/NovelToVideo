@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block title %}视频合成队列 - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="video-queue-page">
+    <div class="page-header">
+        <h2>视频合成队列 - {{ project.name }}</h2>
+        <div>
+            <a href="{{ url_for('project.detail', project_id=project.id) }}" class="btn btn-secondary">返回项目</a>
+        </div>
+    </div>
+    
+    {% if queues %}
+    <!-- 生成预览卡片 -->
+    <div class="info-card">
+        <h3>📊 生成预览</h3>
+        <div id="previewLoading" class="loading" style="text-align: center;">
+            <p>加载预览信息中...</p>
+        </div>
+        <div id="previewContent" style="display: none;">
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>指标</th>
+                            <th>数值</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="preview-label-cell">预计视频数</td>
+                            <td class="preview-value-cell"><span id="previewQueueCount">-</span> 个</td>
+                        </tr>
+                        <tr>
+                            <td class="preview-label-cell">总时长</td>
+                            <td class="preview-value-cell"><span id="previewTotalDuration">-</span> 分钟</td>
+                        </tr>
+                        <tr>
+                            <td class="preview-label-cell">预计磁盘空间</td>
+                            <td class="preview-value-cell"><span id="previewDiskSpace">-</span> MB</td>
+                        </tr>
+                        <tr>
+                            <td class="preview-label-cell">单段时长</td>
+                            <td class="preview-value-cell"><span id="previewSegmentDuration">-</span> 秒</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="alert alert-info" id="previewMessage" style="margin-top: 12px; display: none;"></div>
+        </div>
+    </div>
+    
+    <!-- 队列统计卡片 -->
+    <div class="info-card">
+        <h3>📈 队列统计</h3>
+        <div class="queue-stats" style="margin-bottom: 20px;">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value">{{ total_queues }}</div>
+                    <div class="stat-label">总队列数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ completed_count }}</div>
+                    <div class="stat-label">已完成队列</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ pending_count }}</div>
+                    <div class="stat-label">待处理队列</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ synthesizing_count }}</div>
+                    <div class="stat-label">合成中队列</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ (completed_count / total_queues * 100) | round(1) }} %</div>
+                    <div class="stat-label">完成进度</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">{{ total_duration | round(0) | int }} 秒</div>
+                    <div class="stat-label">总视频时长</div>
+                </div>
+            </div>
+            
+            {% if total_queues > 0 %}
+            <div class="progress-bar" style="margin-top: 20px;">
+                <div class="progress-fill" style="width: 0%" data-width="{{ (completed_count / total_queues * 100) | int }}"></div>
+            </div>
+            <p class="progress-text">队列完成进度: {{ (completed_count / total_queues * 100) | int }}%</p>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- 队列预览卡片 -->
+    <div class="info-card">
+        <h3>📋 队列预览</h3>
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>队列ID</th>
+                        <th>视频序号</th>
+                        <th>状态</th>
+                        <th>总时长</th>
+                        <th>片段进度</th>
+                        <th>输出文件</th>
+                        <th>创建时间</th>
+                        <th>更新时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in queues %}
+                    <tr>
+                        <td>{{ item.queue.id }}</td>
+                        <td>{{ item.queue.video_index }}</td>
+                        <td>
+                            <span class="badge badge-{{ item.queue.status }}">
+                                {% if item.queue.status == 'pending' %}待处理
+                                {% elif item.queue.status == 'synthesizing' %}合成中
+                                {% elif item.queue.status == 'completed' %}已完成
+                                {% else %}{{ item.queue.status }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>{{ item.queue.total_duration | round(2) }} 秒</td>
+                        <td>{{ item.completed_segments }}/{{ item.total_segments }}</td>
+                        <td><code>{{ item.queue.output_video_path }}</code></td>
+                        <td>{{ item.queue.created_at }}</td>
+                        <td>{{ item.queue.updated_at or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 操作面板 -->
+    <div class="info-card">
+        <h3>⚙️ 操作</h3>
+        <div class="action-buttons">
+            <button id="btnRefreshQueue" class="btn btn-primary">🔄 刷新队列</button>
+            <button id="btnAutoRefresh" class="btn btn-secondary">⏱️ 自动刷新 (关)</button>
+        </div>
+        <p class="hint" style="margin-top: 8px;">
+            提示：每个队列对应一个视频文件。合成状态从 <code>pending</code> → <code>synthesizing</code> → <code>completed</code>
+        </p>
+    </div>
+    {% else %}
+    <div class="info-card">
+        <p>暂无视频合成队列数据。请先点击"生成视频"按钮创建队列。</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+/* 预辣表格样式 */
+.preview-label-cell {
+    font-weight: 600;
+    color: #333;
+    background: #f9f9f9;
+    width: 40%;
+}
+
+.preview-value-cell {
+    font-weight: 500;
+    color: #007bff;
+    font-size: 16px;
+}
+
+/* 操作按钮 */
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.action-buttons .btn {
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+.hint {
+    font-size: 12px;
+    color: #666;
+    background: #f9f9f9;
+    padding: 8px 12px;
+    border-left: 3px solid #667eea;
+}
+
+.alert {
+    padding: 12px;
+    border-radius: 4px;
+    margin: 12px 0;
+}
+
+.alert-info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+.loading {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+}
+
+@media (max-width: 768px) {
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .action-buttons .btn {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let autoRefreshInterval = null;
+let autoRefreshEnabled = false;
+const AUTO_REFRESH_KEY = 'videoQueueAutoRefresh_{{ project.id }}';
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 设置进度条宽度
+    var fills = document.querySelectorAll('.progress-fill');
+    fills.forEach(function(fill) {
+        if (fill && fill.dataset && fill.dataset.width) {
+            var w = parseInt(fill.dataset.width, 10);
+            if (!isNaN(w) && w >= 0 && w <= 100) {
+                fill.style.width = w + '%';
+            }
+        }
+    });
+    
+    // 加载预览信息
+    loadVideoPreview();
+    
+    // 恢复自动刷新状态
+    restoreAutoRefreshState();
+    
+    // 绑定按钮事件
+    document.getElementById('btnRefreshQueue').addEventListener('click', function() {
+        this.disabled = true;
+        this.textContent = '加载中...';
+        location.reload();
+    });
+    
+    document.getElementById('btnAutoRefresh').addEventListener('click', function() {
+        toggleAutoRefresh();
+    });
+});
+
+// 恢复自动刷新状态
+function restoreAutoRefreshState() {
+    const savedState = localStorage.getItem(AUTO_REFRESH_KEY);
+    if (savedState === 'enabled') {
+        autoRefreshEnabled = true;
+        startAutoRefresh();
+    }
+}
+
+// 加载视频预览信息
+async function loadVideoPreview() {
+    const projectId = '{{ project.id }}';
+    const previewLoading = document.getElementById('previewLoading');
+    const previewContent = document.getElementById('previewContent');
+    
+    try {
+        // 尝试调用视频预览API
+        const response = await fetch(`/project/${projectId}/video-preview`);
+        const data = await response.json();
+        
+        previewLoading.style.display = 'none';
+        previewContent.style.display = 'block';
+        
+        if (data.success) {
+            const preview = data.data;
+            document.getElementById('previewQueueCount').textContent = preview.total_queue_count;
+            document.getElementById('previewTotalDuration').textContent = preview.estimated_time_minutes;
+            document.getElementById('previewDiskSpace').textContent = preview.estimated_disk_space_mb || '-';
+            document.getElementById('previewSegmentDuration').textContent = preview.segment_duration;
+            
+            if (preview.message) {
+                const msg = document.getElementById('previewMessage');
+                msg.textContent = preview.message;
+                msg.style.display = 'block';
+            }
+        }
+    } catch (e) {
+        previewLoading.textContent = '加载失败: ' + e.message;
+    }
+}
+
+// 启动自动刷新
+function startAutoRefresh() {
+    const btn = document.getElementById('btnAutoRefresh');
+    btn.textContent = '⏱️ 自动刷新 (开)';
+    btn.classList.remove('btn-secondary');
+    btn.classList.add('btn-primary');
+    
+    // 每3秒自动刷新
+    autoRefreshInterval = setInterval(() => {
+        location.reload();
+    }, 3000);
+}
+
+// 切换自动刷新
+function toggleAutoRefresh() {
+    const btn = document.getElementById('btnAutoRefresh');
+    
+    if (autoRefreshEnabled) {
+        // 关闭自动刷新
+        clearInterval(autoRefreshInterval);
+        autoRefreshEnabled = false;
+        localStorage.setItem(AUTO_REFRESH_KEY, 'disabled');
+        btn.textContent = '⏱️ 自动刷新 (关)';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-secondary');
+    } else {
+        // 启用自动刷新
+        autoRefreshEnabled = true;
+        localStorage.setItem(AUTO_REFRESH_KEY, 'enabled');
+        startAutoRefresh();
+    }
+}
+</script>
+{% endblock %}

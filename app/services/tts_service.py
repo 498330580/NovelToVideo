@@ -1,0 +1,288 @@
+"""语音合成服务"""
+import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from app.models.text_segment import TextSegment
+from app.models.task import Task
+from app.models.project import Project
+from app.utils.logger import get_logger
+from app.utils.file_handler import FileHandler
+from config import DefaultConfig
+
+logger = get_logger(__name__)
+
+
+class TTSService:
+    """语音合成服务类"""
+    
+    # 线程池
+    _executor = ThreadPoolExecutor(max_workers=DefaultConfig.MAX_THREAD_COUNT)
+    
+    @staticmethod
+    def synthesize_project(project_id):
+        """
+        合成项目的所有语音
+        
+        Args:
+            project_id: 项目ID
+            
+        Returns:
+            (成功标志, 错误信息)
+        """
+        task_id = None
+        try:
+            # 创建任务
+            task_id = Task.create(project_id, Task.TYPE_AUDIO_SYNTHESIS)
+            Task.update_status(task_id, Task.STATUS_RUNNING)
+            
+            # 更新项目状态
+            Project.update_status(project_id, Project.STATUS_PROCESSING)
+            
+            # 获取项目配置（容错：项目/配置可能为 None）
+            project = Project.get_by_id(project_id)
+            if not project:
+                error_msg = '项目不存在，无法进行语音合成'
+                Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                Project.update_status(project_id, Project.STATUS_FAILED)
+                return False, error_msg
+            config = project.config if isinstance(project.config, dict) else {}
+            
+            # 获取待处理的段落
+            segments = TextSegment.get_pending_segments(project_id)
+            total_segments = len(segments)
+            
+            if total_segments == 0:
+                logger.info(f'没有待合成的段落: 项目ID={project_id}')
+                # 无段落可处理，检查项目当前状态
+                # 如果项目状态是 PROCESSING，说明是系统重启后自动触发的任务
+                # 此时音频已完成，项目应该重置为 FAILED 状态（等待用户生成视频）
+                # 不应该设置为 COMPLETED，因为视频还没有合成
+                current_project = Project.get_by_id(project_id)
+                if current_project and current_project.status == Project.STATUS_PROCESSING:
+                    # 系统重启后的自动任务，音频已完成 → 重置为 FAILED
+                    Project.update_status(project_id, Project.STATUS_FAILED)
+                    logger.info(f'项目{project_id}音频已完成（无待处理段落），重置为FAILED，等待用户生成视频')
+                Task.update_status(task_id, Task.STATUS_COMPLETED)
+                return True, None
+            
+            logger.info(f'开始语音合成: 项目ID={project_id}, 段落数={total_segments}')
+            
+            # 确保临时目录存在
+            temp_audio_dir = os.path.join(DefaultConfig.TEMP_AUDIO_DIR, str(project_id))
+            FileHandler.ensure_dir(temp_audio_dir)
+            
+            # 多线程处理
+            completed_count = 0
+            failed_count = 0
+            
+            for segment in segments:
+                try:
+                    TTSService._synthesize_segment(segment, config, temp_audio_dir)
+                    completed_count += 1
+                except Exception as e:
+                    logger.error(f'段落语音合成失败: segment_id={segment.id}, error={str(e)}')
+                    failed_count += 1
+                    # 确保段落状态被更新为失败
+                    try:
+                        TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_FAILED)
+                    except Exception as status_error:
+                        logger.error(f'更新段落状态失败: segment_id={segment.id}, error={str(status_error)}')
+                finally:
+                    # 确保无论如何都更新进度
+                    # 更新进度
+                    progress = (completed_count + failed_count) / total_segments * 100
+                    Task.update_progress(task_id, progress)
+            
+            # 完成所有处理后，进行最后一次数据库检查
+            # 检查是否有遗留的 'synthesizing' 状态或其他非 'completed' 的段落
+            logger.info(f'完成初始处理，进行最后一次数据库状态检查: 项目ID={project_id}')
+            all_project_segments = TextSegment.get_by_project(project_id)
+            retry_segments = []
+            for seg in all_project_segments:
+                if seg.audio_status != TextSegment.AUDIO_STATUS_COMPLETED:
+                    logger.warning(f'检测到未完成的段落: segment_id={seg.id}, status={seg.audio_status}')
+                    retry_segments.append(seg)
+            
+            # 如果有未完成的段落，将其重新标记为 pending 供重试
+            if retry_segments:
+                logger.info(f'发现 {len(retry_segments)} 个未完成的段落，重新标记为 pending 供重试')
+                for seg in retry_segments:
+                    try:
+                        TextSegment.update_audio_status(seg.id, TextSegment.AUDIO_STATUS_PENDING)
+                        logger.info(f'已重置段落 {seg.id} 为 pending 状态，供下次重试')
+                    except Exception as e:
+                        logger.error(f'重置段落状态失败: segment_id={seg.id}, error={str(e)}')
+            
+            # 完成任务
+            if failed_count == 0 and not retry_segments:
+                Task.update_status(task_id, Task.STATUS_COMPLETED)
+                logger.info(f'语音合成完成: 项目ID={project_id}')
+                return True, None
+            else:
+                if retry_segments:
+                    error_msg = f'部分段落合成失败或遗留: 成功{completed_count}, 失败{failed_count}, 需重试{len(retry_segments)}'
+                else:
+                    error_msg = f'部分段落合成失败: 成功{completed_count}, 失败{failed_count}'
+                Task.update_status(task_id, Task.STATUS_FAILED, error_msg)
+                # 更新项目状态为失败
+                Project.update_status(project_id, Project.STATUS_FAILED)
+                return False, error_msg
+                
+        except Exception as e:
+            logger.error(f'语音合成失败: {str(e)}', exc_info=True)
+            if task_id:
+                Task.update_status(task_id, Task.STATUS_FAILED, str(e))
+            # 更新项目状态为失败
+            Project.update_status(project_id, Project.STATUS_FAILED)
+            return False, str(e)
+    
+    @staticmethod
+    def _synthesize_segment(segment, config, temp_audio_dir):
+        """
+        合成单个段落的语音
+        
+        Args:
+            segment: 文本段落对象
+            config: 配置字典
+            temp_audio_dir: 临时音频目录
+        """
+        # 更新状态为合成中
+        TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_SYNTHESIZING)
+        
+        # 音频文件路径
+        audio_filename = f'segment_{segment.id}.mp3'
+        audio_path = os.path.join(temp_audio_dir, audio_filename)
+        
+        # 获取语音参数
+        voice = config.get('voice', DefaultConfig.DEFAULT_VOICE)
+        rate = config.get('rate', DefaultConfig.DEFAULT_RATE)
+        pitch = config.get('pitch', DefaultConfig.DEFAULT_PITCH)
+        volume = config.get('volume', DefaultConfig.DEFAULT_VOLUME)
+        
+        # 文本内容防御性处理：空文本直接标记失败，避免 TTS 抛错
+        safe_text = (segment.content or '').strip()
+        if not safe_text:
+            TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_FAILED)
+            raise Exception('文本内容为空，无法合成语音')
+        
+        # 根据分段后的文本长度计算超时时间（每1000个字符增加300秒超时，最少300秒）
+        # 考虑到edge-tts的分段已经是按照4096字节限制处理过的，这里使用更合理的超时计算
+        text_length = len(safe_text)
+        timeout_seconds = max(300.0, text_length / 1000 * 300.0)
+        logger.info(f'开始合成语音: segment_id={segment.id}, 超时时间={timeout_seconds}秒')
+
+        # 调用 Edge TTS 合成语音
+        retry_count = 0
+        max_retries = DefaultConfig.TTS_RETRY_COUNT
+        
+        while retry_count < max_retries:
+            try:
+                # 使用异步方式调用 edge-tts
+                # 使用更安全的方式处理事件循环，避免Event loop closed错误
+                try:
+                    # 尝试获取当前事件循环
+                    loop = asyncio.get_event_loop()
+                    if loop.is_closed():
+                        # 如果事件循环已关闭，创建新的事件循环
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                except RuntimeError:
+                    # 如果没有事件循环，创建新的事件循环
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                
+                loop.run_until_complete(TTSService._async_synthesize(
+                    safe_text,
+                    voice,
+                    rate,
+                    pitch,
+                    volume,
+                    audio_path,
+                    timeout_seconds  # 传递计算好的超时时间
+                ))
+                
+                # 验证文件是否生成
+                if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+                    # 读取音频时长
+                    try:
+                        from moviepy.editor import AudioFileClip
+                        audio_clip = AudioFileClip(audio_path)
+                        duration = audio_clip.duration
+                        audio_clip.close()
+                        logger.info(f'音频时长: {duration:.2f}秒')
+                    except Exception as e:
+                        logger.warning(f'读取音频时长失败: {str(e)}')
+                        duration = None
+                    
+                    # 更新状态为已完成，并保存时长
+                    TextSegment.update_audio_status(
+                        segment.id,
+                        TextSegment.AUDIO_STATUS_COMPLETED,
+                        audio_path,
+                        audio_duration=duration
+                    )
+                    logger.info(f'段落语音合成成功: segment_id={segment.id}')
+                    return
+                else:
+                    raise Exception('音频文件生成失败')
+                    
+            except Exception as e:
+                retry_count += 1
+                logger.warning(f'语音合成失败 (尝试 {retry_count}/{max_retries}): {str(e)}')
+                
+                if retry_count >= max_retries:
+                    # 更新状态为失败
+                    TextSegment.update_audio_status(segment.id, TextSegment.AUDIO_STATUS_FAILED)
+                    raise Exception(f'语音合成失败,已重试{max_retries}次: {str(e)}')
+    
+    @staticmethod
+    async def _async_synthesize(text, voice, rate, pitch, volume, output_path, timeout_seconds=None):
+        """
+        异步合成语音
+        
+        Args:
+            text: 文本内容
+            voice: 语音角色
+            rate: 语速
+            pitch: 音调
+            volume: 音量
+            output_path: 输出路径
+            timeout_seconds: 超时时间（秒），如果为None则使用默认计算
+        """
+        try:
+            import edge_tts
+            
+            # 创建通讯对象
+            communicate = edge_tts.Communicate(
+                text,
+                voice,
+                rate=rate,
+                pitch=pitch,
+                volume=volume
+            )
+            
+            # 如果没有传递超时时间，则根据文本长度计算超时时间（每1000个字符增加300秒超时，最少300秒）
+            # 这里使用更宽松的超时设置，因为异步操作可能需要更多时间
+            if timeout_seconds is None:
+                text_length = len(text)
+                timeout_seconds = max(300.0, text_length / 1000 * 300.0)
+            
+            # 尝试保存音频文件，设置动态超时时间
+            await asyncio.wait_for(communicate.save(output_path), timeout=timeout_seconds)
+            
+        except asyncio.TimeoutError:
+            logger.error('Edge TTS 调用超时')
+            raise Exception('语音合成超时，请检查网络连接')
+        except Exception as e:
+            # 记录详细的错误信息
+            logger.error(f'Edge TTS 调用失败: {str(e)}')
+            
+            # 如果是网络相关错误，提供更详细的错误信息
+            error_msg = str(e).lower()
+            if '403' in error_msg or 'invalid response status' in error_msg or 'connection' in error_msg:
+                logger.warning('检测到网络访问问题，请检查：')
+                logger.warning('1. 确保网络连接正常')
+                logger.warning('2. 检查防火墙或代理设置')
+                logger.warning('3. 确认可以访问 speech.platform.bing.com')
+                
+            raise

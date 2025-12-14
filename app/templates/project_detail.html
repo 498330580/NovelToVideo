@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} - 项目详情{% endblock %}
+
+{% block content %}
+<div class="project-detail">
+    <div class="page-header">
+        <h2>{{ project.name }}</h2>
+        <div>
+            <a href="{{ url_for('project.index') }}" class="btn btn-secondary">返回列表</a>
+        </div>
+    </div>
+    {# 保护性定义配置字典，仅当 project.config 为映射类型时使用，否则为空字典 #}
+    {% set cfg = project.config if project.config is mapping else {} %}
+    
+    <div class="info-card">
+        <h3>基本信息</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <label>项目ID:</label>
+                <span>{{ project.id }}</span>
+            </div>
+            <div class="info-item">
+                <label>项目名称:</label>
+                <span>{{ project.name }}</span>
+            </div>
+            <div class="info-item">
+                <label>项目描述:</label>
+                <span>{{ project.description or '-' }}</span>
+            </div>
+            <div class="info-item">
+                <label>状态:</label>
+                <span class="badge badge-{{ project.status }}">
+                    {% if project.status == 'pending' %}待处理
+                    {% elif project.status == 'processing' %}处理中
+                    {% elif project.status == 'completed' %}已完成
+                    {% elif project.status == 'failed' %}失败
+                    {% elif project.status == 'cancelled' %}已取消
+                    {% else %}{{ project.status }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="info-item">
+                <label>输出路径:</label>
+                <span>{{ project.output_path }}</span>
+            </div>
+            <div class="info-item">
+                <label>创建时间:</label>
+                <span>{{ project.created_at }}</span>
+            </div>
+            <div class="info-item">
+                <label>更新时间:</label>
+                <span>{{ project.updated_at }}</span>
+            </div>
+        </div>
+    </div>
+    
+    {% if stats %}
+    <div class="info-card">
+        <h3>音频合成统计信息</h3>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.total_segments }}</div>
+                <div class="stat-label">总段落数</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.completed_segments }}</div>
+                <div class="stat-label">已完成段落</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.pending_segments }}</div>
+                <div class="stat-label">待处理段落</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.failed_segments }}</div>
+                <div class="stat-label">失败段落</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">{{ stats.total_words }}</div>
+                <div class="stat-label">总字数</div>
+            </div>
+        </div>
+        
+        {% if stats.total_segments > 0 %}
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: 0%" data-width="{{ (stats.completed_segments / stats.total_segments * 100) | int }}"></div>
+        </div>
+        <p class="progress-text">音频完成进度: {{ (stats.completed_segments / stats.total_segments * 100) | int }}%</p>
+        {% endif %}
+    </div>
+    
+    <div class="info-card">
+        <h3>任务历史</h3>
+        {% if stats.tasks %}
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>任务ID</th>
+                        <th>任务类型</th>
+                        <th>状态</th>
+                        <th>进度</th>
+                        <th>创建时间</th>
+                        <th>完成时间</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in stats.tasks %}
+                    <tr>
+                        <td>{{ task.id }}</td>
+                        <td>
+                            {% if task.task_type == 'text_import' %}文本导入
+                            {% elif task.task_type == 'audio_synthesis' %}语音合成
+                            {% elif task.task_type == 'video_generation' %}视频生成
+                            {% elif task.task_type == 'video_merge' %}视频合并
+                            {% else %}{{ task.task_type }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge badge-{{ task.status }}">
+                                {% if task.status == 'pending' %}待处理
+                                {% elif task.status == 'running' %}运行中
+                                {% elif task.status == 'completed' %}已完成
+                                {% elif task.status == 'failed' %}失败
+                                {% elif task.status == 'cancelled' %}已取消
+                                {% else %}{{ task.status }}
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td>{{ task.progress | int }}%</td>
+                        <td>{{ task.created_at }}</td>
+                        <td>{{ task.completed_at or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p>暂无任务记录</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="info-card">
+        <h3>操作</h3>
+        {% if project.status == 'pending' %}
+        <div class="alert alert-info">
+            <p>项目已创建，但尚未开始处理。点击下面的按钮开始处理任务。</p>
+            <button id="btnStartProcessing" class="btn btn-primary">开始处理</button>
+        </div>
+        {% endif %}
+        
+        <div class="action-steps" {% if project.status == 'pending' %}style="display:none;"{% endif %}>
+            <div class="step-card">
+                <div class="step-title">步骤一：语音合成</div>
+                <p class="step-desc">将文本段落合成为音频文件。</p>
+                <div class="step-actions">
+                    <button id="btnRetryTTS" class="btn btn-primary">
+                        {% if project.status == 'failed' %}重试语音合成{% else %}开始/重试语音合成{% endif %}
+                    </button>
+                </div>
+            </div>
+            <div class="step-card">
+                <div class="step-title">步骤二：生成视频</div>
+                <p class="step-desc">使用已完成的音频生成视频。</p>
+                <div class="step-actions">
+                    <button id="btnGenerateVideo" class="btn btn-success" {% if stats and (stats.completed_segments < stats.total_segments or stats.total_segments == 0) %}disabled{% endif %}>
+                        生成视频
+                    </button>
+                    <a href="{{ url_for('project.view_video_queue', project_id=project.id) }}" class="btn btn-info">
+                        查看队列
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="resegment-box" style="margin-top:12px;">
+            <label>重新分段（可选）:</label>
+            <select id="segmentMode" class="form-control">
+                <option value="edge_tts" selected>按Edge-TTS字节限制分段</option>
+            </select>
+            <button id="btnResegment" class="btn btn-warning">执行</button>
+        </div>
+        <p class="hint" style="margin-top:8px;color:#888;">提示：生成视频需等待所有语音段落合成完成（音频进度100%）。</p>
+    </div>
+    
+    <div class="info-card">
+        <h3>配置信息</h3>
+        {% if project.config is mapping and project.config.items %}
+        <div class="config-grid">
+            {% for key, value in project.config.items() %}
+            <div class="config-item">
+                <label>{{ key }}:</label>
+                <span>{{ value }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p>暂无配置</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 设置进度条宽度，避免在 style 中直接插入模板表达式造成 CSS 校验器报错
+document.addEventListener('DOMContentLoaded', function() {
+    var fills = document.querySelectorAll('.progress-fill');
+    fills.forEach(function(fill) {
+        if (fill && fill.dataset && fill.dataset.width) {
+            var w = parseInt(fill.dataset.width, 10);
+            if (!isNaN(w) && w >= 0 && w <= 100) {
+                fill.style.width = w + '%';
+            }
+        }
+    });
+    
+    // 自动刷新页面以更新进度(仅在处理中时)
+    const projectStatus = '{{ project.status }}';
+    if (projectStatus === 'processing') {
+        setTimeout(function() {
+            location.reload();
+        }, 5000); // 每5秒刷新一次
+    }
+});
+
+// 操作按钮事件绑定
+var btnRetryTTS = document.getElementById('btnRetryTTS');
+if (btnRetryTTS) btnRetryTTS.addEventListener('click', async function() {
+    try {
+        const res = await fetch(`{{ url_for('project.retry_tts', project_id=project.id) }}`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || '已提交语音合成任务');
+            location.reload();
+        } else {
+            alert(data.error || '提交失败');
+        }
+    } catch (e) {
+        alert('网络错误，稍后重试');
+    }
+});
+
+var btnGenerateVideo = document.getElementById('btnGenerateVideo');
+if (btnGenerateVideo) btnGenerateVideo.addEventListener('click', async function() {
+    try {
+        const res = await fetch(`{{ url_for('project.generate_video', project_id=project.id) }}`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || '已提交视频生成任务');
+            // 添加自动刷新机制，以便在视频生成过程中更新进度
+            startAutoRefresh();
+        } else {
+            alert(data.error || '提交失败');
+        }
+    } catch (e) {
+        alert('网络错误，稍后重试');
+    }
+});
+
+// 分段模式切换
+document.getElementById('segmentMode').addEventListener('change', function() {
+    const maxWordsInput = document.getElementById('maxWords');
+    if (this.value === 'chapter') {
+        maxWordsInput.style.display = 'inline-block';
+    } else {
+        maxWordsInput.style.display = 'none';
+    }
+});
+
+var btnResegment = document.getElementById('btnResegment');
+if (btnResegment) btnResegment.addEventListener('click', async function() {
+    try {
+        const res = await fetch(`{{ url_for('project.resegment', project_id=project.id) }}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ segment_mode: 'edge_tts' })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || '重新分段完成');
+            location.reload();
+        } else {
+            alert(data.error || '重新分段失败');
+        }
+    } catch (e) {
+        alert('网络错误，稍后重试');
+    }
+});
+
+// 开始处理按钮事件绑定
+var btnStartProcessing = document.getElementById('btnStartProcessing');
+if (btnStartProcessing) btnStartProcessing.addEventListener('click', async function() {
+    if (!confirm('确定要开始处理这个项目吗？')) {
+        return;
+    }
+    
+    // 禁用按钮防止重复点击
+    btnStartProcessing.disabled = true;
+    btnStartProcessing.textContent = '处理中...';
+    
+    try {
+        const res = await fetch(`{{ url_for('project.start_processing', project_id=project.id) }}`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.message || '已提交语音合成任务');
+            location.reload();
+        } else {
+            alert(data.error || '提交失败');
+            // 恢复按钮状态
+            btnStartProcessing.disabled = false;
+            btnStartProcessing.textContent = '开始处理';
+        }
+    } catch (e) {
+        alert('网络错误，稍后重试');
+        // 恢复按钮状态
+        btnStartProcessing.disabled = false;
+        btnStartProcessing.textContent = '开始处理';
+    }
+});
+
+// 自动刷新函数
+function startAutoRefresh() {
+    // 每3秒刷新一次页面，持续1分钟
+    let refreshCount = 0;
+    const maxRefreshes = 20; // 1分钟内最多刷新20次
+    
+    const refreshInterval = setInterval(function() {
+        refreshCount++;
+        if (refreshCount >= maxRefreshes) {
+            clearInterval(refreshInterval);
+            return;
+        }
+        
+        // 发送一个简单的请求来检查任务状态
+        fetch(`{{ url_for('project.stats', project_id=project.id) }}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 检查是否有运行中的视频生成任务
+                    const videoTasks = data.data.tasks.filter(task => 
+                        task.task_type === 'video_generation' && task.status === 'running'
+                    );
+                    
+                    if (videoTasks.length > 0) {
+                        // 如果有运行中的视频生成任务，刷新页面
+                        location.reload();
+                    } else {
+                        // 如果没有运行中的视频生成任务，停止刷新
+                        clearInterval(refreshInterval);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('检查任务状态失败:', error);
+                clearInterval(refreshInterval);
+            });
+    }, 3000); // 每3秒检查一次
+}
+</script>
+{% endblock %}
